@@ -1,0 +1,26 @@
+# secrets
+.env
+*.pem
+*.key
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# generated artifacts (reproducible from the source database)
+data/
+*.sqlite
+*.sqlite3
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# hackathon brief contains the shared DB credentials
+*.pdf
