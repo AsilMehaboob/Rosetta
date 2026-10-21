@@ -165,6 +165,16 @@ class OracleAdapter(SourceAdapter):
     def date_literal(self, value: date) -> str:
         return f"DATE '{value.isoformat()}'"
 
+    def type_family(self, data_type: str) -> str:
+        base = data_type.split("(")[0].upper()
+        if base == "DATE" or base.startswith("TIMESTAMP"):
+            return "date"
+        if base in ("NUMBER", "FLOAT", "INTEGER", "BINARY_FLOAT", "BINARY_DOUBLE"):
+            return "number"
+        if base in ("VARCHAR2", "NVARCHAR2", "CHAR", "NCHAR", "VARCHAR", "CLOB", "NCLOB"):
+            return "text"
+        return "other"
+
     # profiling helpers
     def approx_distinct_expr(self, column: str) -> str:
         return f"APPROX_COUNT_DISTINCT({self.quote(column)})"

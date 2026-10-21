@@ -82,6 +82,10 @@ class SourceAdapter(ABC):
     @abstractmethod
     def date_literal(self, value: date) -> str: ...
 
+    @abstractmethod
+    def type_family(self, data_type: str) -> str:
+        """Map an engine type name to "date", "number", "text" or "other"."""
+
     # profiling helpers
     @abstractmethod
     def approx_distinct_expr(self, column: str) -> str: ...
