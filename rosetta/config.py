@@ -26,6 +26,7 @@ class Settings:
     schemas: tuple[str, ...]
     query_timeout_seconds: int
     query_max_rows: int
+    data_dir: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -42,4 +43,5 @@ class Settings:
             schemas=schemas,
             query_timeout_seconds=int(os.getenv("QUERY_TIMEOUT_SECONDS", "30")),
             query_max_rows=int(os.getenv("QUERY_MAX_ROWS", "1000")),
+            data_dir=os.getenv("DATA_DIR", "data"),
         )
