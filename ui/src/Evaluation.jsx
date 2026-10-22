@@ -30,12 +30,88 @@ function when(runId) {
   });
 }
 
-function Metric({ label, value, hint }) {
+// One of the three things the checkpoint asks for (correct, consistent, fast): a headline figure, a bar, details.
+function ScoreGroup({ title, share, value, caption, rows }) {
+  const tone = share === null || share === undefined ? "" : share >= 0.8 ? "good" : share >= 0.5 ? "warn" : "bad";
   return (
-    <div className="metric" title={hint}>
-      <span className="metric-value">{value}</span>
-      <span className="metric-label">{label}</span>
-    </div>
+    <section className="score">
+      <h3>{title}</h3>
+      <div className="score-value">{value}</div>
+      <div className={`score-bar ${tone}`}>
+        <div style={{ width: `${Math.round((share ?? 0) * 100)}%` }} />
+      </div>
+      <p className="score-caption">{caption}</p>
+      <dl>
+        {rows.map(([label, v, hint]) => (
+          <div key={label} title={hint}>
+            <dt>{label}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function Scorecard({ summary }) {
+  const o = summary.overall;
+  const questions = summary.per_question;
+  const solved = questions.filter((p) => p.runs > 0 && p.correct_runs === p.runs).length;
+  const consistent = questions.filter((p) => p.consistent).length;
+  const correctRuns = questions.reduce((n, p) => n + p.correct_runs, 0);
+  return (
+    <>
+      <div className="headline">
+        <span className="headline-big">
+          {solved} of {questions.length}
+        </span>
+        <span className="headline-text">
+          questions answered correctly in every run
+          <span className="muted">
+            {" "}
+            · {correctRuns} of {o.runs} runs correct
+          </span>
+        </span>
+      </div>
+      <div className="scores">
+        <ScoreGroup
+          title="Correct"
+          share={o.accuracy}
+          value={pct(o.accuracy)}
+          caption="of runs gave the expected data or an honest refusal"
+          rows={[
+            ["Answerable runs correct", pct(o.answer_accuracy)],
+            ["Queries that ran", pct(o.query_success), "Answerable questions whose query ran without error"],
+            ["Unanswerable refused", pct(o.refusal_accuracy)],
+            ["Right rows, column missing", `${o.partial_runs} runs`],
+            ["Wrong answers", pct(o.wrong_answers), "Runs that gave different data, or answered an unanswerable question"],
+          ]}
+        />
+        <ScoreGroup
+          title="Consistent"
+          share={o.consistency}
+          value={pct(o.consistency)}
+          caption="of questions returned the same data in every run"
+          rows={[
+            ["Same data every run", `${consistent} of ${questions.length} questions`],
+            ["Correct every run", pct(o.solved_every_run)],
+            ["Runs per question", summary.runs_per_question],
+          ]}
+        />
+        <ScoreGroup
+          title="Fast"
+          share={o.fast}
+          value={secs(o.seconds.median)}
+          caption={`median per answer · ${pct(o.fast)} within ${summary.fast_seconds}s`}
+          rows={[
+            ["Mean", secs(o.seconds.mean)],
+            ["95th percentile", secs(o.seconds.p95)],
+            ["Slowest", secs(o.seconds.max)],
+            ["Model calls", o.llm_calls.toLocaleString()],
+          ]}
+        />
+      </div>
+    </>
   );
 }
 
@@ -269,16 +345,7 @@ export default function Evaluation() {
 
       {o && (
         <>
-          <div className="metrics">
-            <Metric label="Correct runs" value={pct(o.accuracy)} hint={`${o.runs} runs in total`} />
-            <Metric label="Correct every run" value={pct(o.solved_every_run)} hint="Questions right in all runs" />
-            <Metric label="Consistent" value={pct(o.consistency)} hint="Questions with the same data in every run" />
-            <Metric label="Queries ran" value={pct(o.query_success)} hint="Answerable questions whose query ran" />
-            <Metric label="Refused correctly" value={pct(o.refusal_accuracy)} hint="Unanswerable questions refused" />
-            <Metric label="Wrong answers" value={pct(o.wrong_answers)} hint="Runs that gave a wrong number" />
-            <Metric label={`Within ${summary.fast_seconds}s`} value={pct(o.fast)} hint="Runs fast enough" />
-            <Metric label="Median time" value={secs(o.seconds.median)} hint={`p95 ${secs(o.seconds.p95)} · max ${secs(o.seconds.max)}`} />
-          </div>
+          <Scorecard summary={summary} />
 
           <div className="table-wrap eval-table">
             <table>
