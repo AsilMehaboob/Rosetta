@@ -9,6 +9,7 @@ import ResultTable from "./ResultTable.jsx";
 
 const HISTORY_KEY = "rosetta.conversation";
 const HISTORY_MAX = 20;
+const CONTEXT_TURNS = 3; // earlier answered questions sent along, so follow-ups can refer to them
 
 // The conversation lives only in this browser; storage may be unavailable (private mode), which is fine.
 function loadTurns() {
@@ -61,10 +62,15 @@ export default function App() {
 
   async function ask(question, asOf) {
     const id = Date.now();
+    // the complete question each earlier answer was for, and its query, oldest first
+    const history = turns
+      .filter((t) => t.status === "done" && t.result)
+      .slice(-CONTEXT_TURNS)
+      .map((t) => ({ question: t.result.question || t.question, sql: t.result.sql || null }));
     setTurns((ts) => [...ts, { id, question, status: "pending" }]);
     let update;
     try {
-      update = { status: "done", result: await askQuestion(question, asOf) };
+      update = { status: "done", result: await askQuestion(question, asOf, history) };
     } catch (e) {
       update = { status: "error", error: e.message };
     }
@@ -106,6 +112,11 @@ export default function App() {
               turns.map((turn) => (
                 <section key={turn.id} className="turn">
                   <div className="bubble">{turn.question}</div>
+                  {turn.result?.follow_up && turn.result.question !== turn.question && (
+                    <p className="read-as">
+                      Read as: <span>{turn.result.question}</span>
+                    </p>
+                  )}
                   <Reply turn={turn} />
                 </section>
               ))

@@ -40,10 +40,18 @@ class LearnRequest(BaseModel):
     force: bool = False  # re-measure even when a table's fingerprint is unchanged
 
 
+class Turn(BaseModel):
+    question: str
+    sql: str | None = None
+
+
 class ExtractRequest(BaseModel):
     question: str = Field(min_length=1, examples=["How many overdue invoices were there in Berlin last month?"])
     reference_date: date | None = Field(
         default=None, description='"Today" for relative dates such as "last month"; defaults to REFERENCE_DATE or today'
+    )
+    history: list[Turn] = Field(
+        default_factory=list, max_length=10, description="Earlier turns, oldest first, so follow-ups can be understood"
     )
 
 
@@ -124,7 +132,8 @@ def ask(request: ExtractRequest) -> dict:
     reference = request.reference_date or settings.reference_date or date.today()
     adapter = get_adapter(settings)
     try:
-        return answer_question(llm, adapter, storage, load_index(storage), request.question, reference)
+        history = [t.model_dump() for t in request.history]
+        return answer_question(llm, adapter, storage, load_index(storage), request.question, reference, history)
     finally:
         adapter.close()
 

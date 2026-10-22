@@ -24,9 +24,11 @@ async function call(path, options = {}) {
   return res.json();
 }
 
-export function askQuestion(question, referenceDate) {
+// history: earlier turns, oldest first ({question, sql}), so follow-ups like "now split that by city" make sense
+export function askQuestion(question, referenceDate, history = []) {
   const body = { question };
   if (referenceDate) body.reference_date = referenceDate;
+  if (history.length) body.history = history;
   return call("/questions", { method: "POST", body: JSON.stringify(body) });
 }
 

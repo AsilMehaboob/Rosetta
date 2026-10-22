@@ -32,7 +32,7 @@ from rosetta.answer.sqlcheck import check_query
 from rosetta.learn.profile import to_json_value
 from rosetta.llm import JsonLLM
 
-PROMPT_VERSION = "sql-agent-9"
+PROMPT_VERSION = "sql-agent-10"
 
 
 @dataclass(frozen=True)
@@ -103,6 +103,8 @@ Rules:
    every group with its figure, sorted so the asked-for extreme comes first (descending for highest/most, ascending
    for lowest/fewest). Do not cut the result to one row (no ROWNUM, FETCH FIRST, LIMIT or rank filter) unless the
    question asks for a number of them ("top 3"): the full ranking is the evidence and shows ties.
+10e. When the context has "previous_query", the question follows on from that earlier question: start from its query,
+   keep its definitions, filters, joins and dates, and change only what the new question changes.
 10d. A column may list "same_as": other columns that name the same thing (each value of one goes with exactly one
    value of the other, such as a short name and a full name). When you group by or list such a column, also select
    (and group by) its same_as columns, so every name of each item is shown; the counts do not change.
@@ -138,6 +140,7 @@ def build_context(extracted: dict, pack: dict, adapter: SourceAdapter) -> dict[s
         "joins": pack["joins"],
         "related_tables": [{"table": t, "kind": k, "description": d} for t, k, d in pack.get("related_tables", [])],
         "not_found_in_data": pack.get("unmatched", []),
+        **({"previous_query": extracted["previous_query"]} if extracted.get("previous_query") else {}),
     }
 
 

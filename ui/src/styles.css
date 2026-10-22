@@ -1344,3 +1344,18 @@ td.pos {
     animation: none;
   }
 }
+
+/* how a follow-up was understood */
+
+.read-as {
+  margin: 6px 0 0 auto;
+  width: fit-content;
+  max-width: 80%;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.read-as span {
+  color: var(--text);
+}
