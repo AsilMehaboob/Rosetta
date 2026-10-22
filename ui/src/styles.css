@@ -76,13 +76,13 @@ body,
   letter-spacing: -0.01em;
 }
 
+/* the scroll area spans the full width, so the wheel works over the side margins too;
+   side padding keeps the content in a centred column */
 .thread {
   flex: 1;
   overflow-y: auto;
   width: 100%;
-  max-width: 780px;
-  margin: 0 auto;
-  padding: 8px 20px 24px;
+  padding: 8px max(20px, calc((100% - 740px) / 2)) 24px;
 }
 
 .dock {
@@ -486,9 +486,7 @@ code {
   flex: 1;
   overflow-y: auto;
   width: 100%;
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 8px 20px 32px;
+  padding: 8px max(20px, calc((100% - 1000px) / 2)) 32px;
 }
 
 .eval-head {
