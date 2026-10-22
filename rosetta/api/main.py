@@ -1,7 +1,6 @@
 """HTTP front door. Thin: it calls the Learn and Answer modules and holds no logic."""
 
 import os
-import time
 from datetime import date
 from typing import Literal
 
@@ -10,8 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from rosetta.adapters import get_adapter
-from rosetta.answer.answer import build_answer
 from rosetta.answer.extract import extract
+from rosetta.answer.pipeline import answer_question
 from rosetta.answer.retrieve import load_index, retrieve
 from rosetta.answer.sql_agent import run_agent
 from rosetta.learn.profile import PROFILES
@@ -117,26 +116,12 @@ def sql_for_question(request: ExtractRequest) -> dict:
 @app.post("/questions")
 def ask(request: ExtractRequest) -> dict:
     """Answer a business question: the answer, the rows, the query and the evidence behind them."""
-    started = time.perf_counter()
     settings = Settings.from_env()
     storage = Storage(settings.data_dir)
     llm = GeminiLLM(settings.gemini_api_key, settings.gemini_model, storage)
     reference = request.reference_date or settings.reference_date or date.today()
-    index = load_index(storage)
     adapter = get_adapter(settings)
-
-    extracted = extract(llm, request.question, reference)
-    pack = retrieve(index, extracted, adapter.sqlglot_dialect)
-    agent = None
-    if pack["decision"] == "answer":
-        profiles = {k: storage.read(PROFILES, k) for k in index.tables}
-        adapter.connect_pool()
-        try:
-            agent = run_agent(llm, adapter, index, profiles, extracted, pack)
-        finally:
-            adapter.close()
-    result = build_answer(llm, extracted, pack, agent, index.version)
-    result["seconds"] = round(time.perf_counter() - started, 2)
-    result["llm_calls"] = llm.calls
-    result["llm_cached"] = llm.cached
-    return result
+    try:
+        return answer_question(llm, adapter, storage, load_index(storage), request.question, reference)
+    finally:
+        adapter.close()

@@ -2,6 +2,7 @@
 
 The cache key covers the model, prompt version, prompt text and schema, so an
 unchanged input never costs a second call and a rerun gives identical output.
+The evaluation harness turns cache reads off, so each of its runs asks the model afresh.
 """
 
 import hashlib
@@ -37,9 +38,10 @@ def cache_key(model: str, prompt_version: str, system: str, prompt: str, schema:
 class CachedLLM:
     """Shared caching around any backend's single `_send` call."""
 
-    def __init__(self, model: str, storage: Storage):
+    def __init__(self, model: str, storage: Storage, use_cache: bool = True):
         self.model = model
         self._storage = storage
+        self._use_cache = use_cache  # False: always send, still store the newest response
         self.calls = 0
         self.cached = 0
 
@@ -48,7 +50,7 @@ class CachedLLM:
 
     def generate_json(self, *, system: str, prompt: str, schema: dict, prompt_version: str) -> dict:
         key = cache_key(self.model, prompt_version, system, prompt, schema)
-        hit = self._storage.read(LLM_CACHE, key)
+        hit = self._storage.read(LLM_CACHE, key) if self._use_cache else None
         if hit is not None:
             self.cached += 1
             return hit["response"]
@@ -72,13 +74,14 @@ class GeminiLLM(CachedLLM):
         retry_base_seconds: float = 10.0,
         request_timeout_seconds: int = 300,
         requests_per_minute: int = 15,
+        use_cache: bool = True,
     ):
         if not api_key or not model:
             raise RuntimeError("Missing GEMINI_API_KEY or GEMINI_MODEL; see .env.example")
         from google import genai
         from google.genai import types
 
-        super().__init__(model, storage)
+        super().__init__(model, storage, use_cache)
         # without a timeout a stalled request waits forever
         self._client = genai.Client(
             api_key=api_key, http_options=types.HttpOptions(timeout=request_timeout_seconds * 1000)
