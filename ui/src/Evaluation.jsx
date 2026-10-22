@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { getEvalStatus, getEvaluation, listEvaluations, startEvaluation } from "./api.js";
 import ResultTable from "./ResultTable.jsx";
+import SqlBlock from "./SqlBlock.jsx";
 
 // How each verdict reads, and whether it counts as correct (good), nearly (warn) or wrong (bad).
 const VERDICTS = {
@@ -120,8 +121,86 @@ function Dot({ v, run }) {
   return <span className={`vdot ${tone}`} title={`Run ${run}: ${text}`} />;
 }
 
+// The same comparable form the harness uses: numbers to 4 decimals, dates as YYYY-MM-DD, text trimmed.
+const DAY = /^(\d{4}-\d{2}-\d{2})(?:[T ]00:00:00(?:\.0+)?)?$/;
+const MONTH = /^(\d{4})-(\d{2})$/;
+const MASKED = "***";
+
+function norm(v) {
+  if (v === null || v === undefined) return "null";
+  if (typeof v === "boolean") return `b:${v}`;
+  if (typeof v === "number") return `n:${Math.round(v * 1e4) / 1e4}`;
+  const text = String(v).trim();
+  const day = text.match(DAY);
+  if (day) return `s:${day[1]}`;
+  const month = text.match(MONTH);
+  if (month) return `s:${month[1]}-${month[2]}-01`;
+  return `s:${text}`;
+}
+
+const valuesOf = (rows, j) => new Set(rows.map((r) => norm(r[j])));
+const allValues = (rows) => new Set(rows.flatMap((r) => r.map(norm)));
+
+// Which columns were paired, and which cells on each side have no counterpart on the other side.
+function differences(record, expected) {
+  const got = { columns: record.columns || [], rows: record.rows || [] };
+  const ref = { columns: expected.columns, rows: expected.rows };
+  const paired = Object.entries(record.paired_columns || {})
+    .map(([e, g]) => [ref.columns.indexOf(e), got.columns.indexOf(g)])
+    .filter(([j, k]) => j >= 0 && k >= 0);
+  const extra = new Set((record.extra_columns || []).map((c) => got.columns.indexOf(c)));
+  const gotPair = new Map(paired.map(([j, k]) => [k, j]));
+  const refPair = new Map(paired);
+  const gotAll = allValues(got.rows);
+  const refAll = allValues(ref.rows);
+  const gotSets = new Map(paired.map(([j]) => [j, valuesOf(ref.rows, j)]));
+  const refSets = new Map(paired.map(([j, k]) => [j, valuesOf(got.rows, k)]));
+
+  const off = (value, pool) => (value === MASKED || pool.has(norm(value)) ? "" : "cell-off");
+  return {
+    paired: paired.map(([j, k]) => [ref.columns[j], got.columns[k]]),
+    missing: ref.columns.filter((_, j) => !refPair.has(j)),
+    extra: got.columns.filter((_, k) => extra.has(k)),
+    got: {
+      columnClass: (k) => (extra.has(k) ? "col-extra" : ""),
+      cellClass: (i, k) => {
+        if (extra.has(k)) return "cell-extra";
+        const j = gotPair.get(k);
+        return off(got.rows[i][k], j === undefined ? refAll : gotSets.get(j));
+      },
+    },
+    ref: {
+      columnClass: (j) => (refPair.has(j) ? "" : "col-missing"),
+      cellClass: (i, j) => off(ref.rows[i][j], refPair.has(j) ? refSets.get(j) : gotAll),
+    },
+  };
+}
+
+function Pairing({ diff }) {
+  if (!diff.paired.length && !diff.missing.length && !diff.extra.length) return null;
+  return (
+    <div className="pairing">
+      {diff.paired.map(([e, g]) => (
+        <span key={e} className="chip" title="Same values in both results">
+          {e === g ? e : `${e} ↔ ${g}`}
+        </span>
+      ))}
+      {diff.missing.map((c) => (
+        <span key={c} className="chip missing" title="In the reference, not in Rosetta's result">
+          {c} missing
+        </span>
+      ))}
+      {diff.extra.map((c) => (
+        <span key={c} className="chip extra" title="Added by Rosetta">
+          + {c}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // One side of the comparison: a query and the rows it returned.
-function Pane({ title, meta, sql, columns, rows, rowCount, children }) {
+function Pane({ title, meta, sql, columns, rows, rowCount, marks, children }) {
   return (
     <div className="pane">
       <div className="pane-head">
@@ -129,10 +208,10 @@ function Pane({ title, meta, sql, columns, rows, rowCount, children }) {
         {meta && <span className="muted">{meta}</span>}
       </div>
       {children}
-      {sql ? <pre className="sql">{sql}</pre> : <p className="muted">No query.</p>}
+      {sql ? <SqlBlock sql={sql} /> : <p className="muted">No query.</p>}
       {columns?.length > 0 && (
         <>
-          <ResultTable columns={columns} rows={rows} />
+          <ResultTable columns={columns} rows={rows} cellClass={marks?.cellClass} columnClass={marks?.columnClass} />
           {rowCount > rows.length && (
             <p className="muted small">First {rows.length} of {rowCount.toLocaleString()} rows saved.</p>
           )}
@@ -146,6 +225,7 @@ function QuestionDetail({ item, runs, expected }) {
   const [shown, setShown] = useState(runs[0]?.run);
   const record = runs.find((r) => r.run === shown) || runs[0];
   const v = record && verdict(record.verdict);
+  const diff = record?.columns?.length && expected ? differences(record, expected) : null;
   return (
     <div className="q-detail">
       {item.checks && <p className="muted">Checks: {item.checks}</p>}
@@ -167,6 +247,15 @@ function QuestionDetail({ item, runs, expected }) {
         </p>
       )}
 
+      {diff && (
+        <>
+          <Pairing diff={diff} />
+          <p className="muted small legend">
+            <span className="cell-off swatch" /> value not found in the other result
+          </p>
+        </>
+      )}
+
       <div className="compare">
         {record ? (
           <Pane
@@ -176,6 +265,7 @@ function QuestionDetail({ item, runs, expected }) {
             columns={record.columns}
             rows={record.rows}
             rowCount={record.row_count}
+            marks={diff?.got}
           >
             {record.answer && <p className="run-answer">{record.answer}</p>}
           </Pane>
@@ -190,6 +280,7 @@ function QuestionDetail({ item, runs, expected }) {
             columns={expected.columns}
             rows={expected.rows}
             rowCount={expected.row_count}
+            marks={diff?.ref}
           />
         ) : (
           <div className="pane">

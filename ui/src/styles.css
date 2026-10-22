@@ -885,3 +885,125 @@ code {
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
+
+/* differences between Rosetta's result and the reference */
+
+.pairing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.chip {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--soft);
+}
+
+.chip.missing {
+  color: var(--warn);
+  border-color: currentColor;
+  background: transparent;
+}
+
+.chip.extra {
+  color: var(--muted);
+  background: transparent;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+td.cell-off,
+.cell-off {
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+}
+
+td.cell-extra {
+  color: var(--muted);
+}
+
+th.col-extra {
+  font-style: italic;
+}
+
+th.col-missing {
+  color: var(--warn);
+}
+
+/* queries */
+
+.sql-block {
+  position: relative;
+}
+
+.copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sql-block:hover .copy,
+.copy:focus-visible {
+  opacity: 1;
+}
+
+.tok-kw {
+  color: #7c3aed;
+  font-weight: 500;
+}
+
+.tok-str {
+  color: #b45309;
+}
+
+.tok-num {
+  color: #0369a1;
+}
+
+.tok-comment {
+  color: var(--muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  .tok-kw {
+    color: #c4b5fd;
+  }
+
+  .tok-str {
+    color: #fcd34d;
+  }
+
+  .tok-num {
+    color: #7dd3fc;
+  }
+}
+
+@media (hover: none) {
+  .copy {
+    opacity: 1;
+  }
+}
