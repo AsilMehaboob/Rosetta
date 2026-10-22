@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from rosetta.adapters import get_adapter
 from rosetta.answer.extract import extract
 from rosetta.answer.retrieve import load_index, retrieve
+from rosetta.answer.sql_agent import run_agent
+from rosetta.learn.profile import PROFILES
 from rosetta.config import Settings
 from rosetta.learn.annotate import run_annotate
 from rosetta.learn.assemble import run_assemble
@@ -75,3 +77,25 @@ def retrieve_for_question(request: ExtractRequest) -> dict:
     reference = request.reference_date or settings.reference_date or date.today()
     extracted = extract(llm, request.question, reference)
     return {"extract": extracted, "retrieve": retrieve(load_index(storage), extracted)}
+
+
+@app.post("/sql")
+def sql_for_question(request: ExtractRequest) -> dict:
+    """Extract, retrieve, then let the SQL agent write and run the query (read-only)."""
+    settings = Settings.from_env()
+    storage = Storage(settings.data_dir)
+    llm = GeminiLLM(settings.gemini_api_key, settings.gemini_model, storage)
+    reference = request.reference_date or settings.reference_date or date.today()
+    index = load_index(storage)
+    extracted = extract(llm, request.question, reference)
+    pack = retrieve(index, extracted)
+    if pack["decision"] != "answer":
+        return {"extract": extracted, "retrieve": pack, "agent": {"status": "cannot_answer", "reason": pack["reason"]}}
+    profiles = {k: storage.read(PROFILES, k) for k in index.tables}
+    adapter = get_adapter(settings)
+    adapter.connect_pool()
+    try:
+        agent = run_agent(llm, adapter, index, profiles, extracted, pack)
+    finally:
+        adapter.close()
+    return {"extract": extracted, "retrieve": pack, "agent": agent}
