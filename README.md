@@ -7,6 +7,8 @@ The source is an Oracle 23ai database with two schemas and 21 tables, no declare
 Rosetta is not told what any table or column means. It works that out from the data, writes it into a versioned
 **semantic layer**, and answers every question from that layer.
 
+**▶ Code walkthrough video:** [watch on Google Drive](https://drive.google.com/file/d/1iHnY4Z6xsCYxmRbXYzJy5qA2qC970ALt/view?usp=sharing)
+
 ## What it does
 
 - **Learns the data (Checkpoint 1).** It profiles every table, detects history and snapshot tables, finds the
