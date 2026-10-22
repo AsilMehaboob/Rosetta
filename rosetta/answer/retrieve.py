@@ -358,6 +358,13 @@ def retrieve(
     index: LayerIndex, extracted: dict[str, Any], dialect: str, cfg: RetrieveConfig | None = None
 ) -> dict[str, Any]:
     cfg = cfg or RetrieveConfig()
+    question_words = tokens(extracted.get("question", ""))
+
+    def asked_left_out(term: dict) -> bool:
+        """The question names every word of a left-out record type ("test accounts")."""
+        name = re.sub(r"\(.*?\)", " ", term["term"])  # "test tariffs (via X)" is named by "test tariffs"
+        return all(any(_match_strength(w, q) for q in question_words) for w in tokens(name))
+
     term_scores: Counter = Counter()
     column_scores: Counter = Counter()
     totals: Counter = Counter()
@@ -373,6 +380,8 @@ def retrieve(
                 contrib[key] += weight * s
             best_term: Counter = Counter()
             for key, s in index.term_index.score(query).items():
+                if index.terms[key].get("left_out_by_default") and not asked_left_out(index.terms[key]):
+                    continue  # what a table leaves out says nothing about what it is about
                 term_scores[key] += weight * s
                 table = index.terms[key]["table"]
                 best_term[table] = max(best_term[table], weight * s)

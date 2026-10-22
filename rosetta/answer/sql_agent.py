@@ -24,7 +24,7 @@ from rosetta.answer.sqlcheck import check_query
 from rosetta.learn.profile import to_json_value
 from rosetta.llm import JsonLLM
 
-PROMPT_VERSION = "sql-agent-7"
+PROMPT_VERSION = "sql-agent-8"
 
 
 @dataclass(frozen=True)
@@ -85,8 +85,9 @@ Rules:
    TRUNC(date, 'MM')) and one column per measure. Put each change on the later period's row with LAG over the period
    column. Never put several periods side by side in one row.
 10. Join only along the joins given. Select only what the question asks for, with readable aliases; order the rows.
-10a. A table may list records "left_out_by_default" (test, dummy, internal records found in the data). Unless the
-   question asks about such records, add each one's exclusion_sql for every table you read, with that table's alias.
+10a. A table may list records "left_out_by_default" (test, dummy, internal records found in the data). Count them like
+   any other records: the data is answered as it is. Only when the question asks to leave such records out
+   ("excluding test accounts", "without internal ones") add that record type's exclusion_sql, with the table's alias.
 10b. When the question splits a group into categories that come from a joined table ("how many have A and how many
    have B"), write LEFT JOIN with the same ON conditions, so records with no match stay in as their own group (an
    empty category) instead of silently disappearing.
@@ -518,30 +519,70 @@ def unmatched_rows(adapter: SourceAdapter, index: LayerIndex, sql: str, dialect:
     return found
 
 
-def left_out_issues(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[str]:
-    """Tables read without applying the records they leave out by default, when the question does not ask for them.
+_LEAVE_OUT = re.compile(r"\b(?:exclud\w*|without|except|other than|not counting|leav\w* out|non[- ])")
 
-    A left-out term counts as applied when every value it compares against appears in the query; a
-    question that names the term's own words (for example asks about test records) needs no exclusion.
+
+def _left_out_terms(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[tuple[dict, bool, bool]]:
+    """Each left-out record type of the queried tables: (term, applied in the query, asked to be left out).
+
+    A term counts as applied when every value it compares against appears in the query. It is asked
+    to be left out when the question names the term's words and says to leave something out.
     """
     tree = sqlglot.parse_one(sql, read=dialect)
     query_literals = {str(l.this) for l in tree.find_all(exp.Literal) if l.is_string}
-    asked = set(tokens(extracted["question"]))
-    issues = []
+    question = fold(extracted["question"])
+    asked = set(tokens(question))
+    leave_out = bool(_LEAVE_OUT.search(question))
+    found = []
     for key in _query_tables(tree, index):
         for term in index.terms.values():
             if term["table"] != key or not term.get("left_out_by_default") or not term.get("exclusion_sql"):
                 continue
-            if asked & set(tokens(term["term"])):
-                continue  # the question is about these records
             term_tree = sqlglot.parse_one(f"SELECT 1 FROM t WHERE {term['sql']}", read=dialect)
             needed = {str(l.this) for l in term_tree.find_all(exp.Literal) if l.is_string}
-            if needed and not needed <= query_literals:
-                issues.append(
-                    f"{key} normally leaves out '{term['term']}' ({term['definition']}); the question does not ask "
-                    f"for them, so add: {term['exclusion_sql']}. Run the same query again if they should be counted"
-                )
+            applied = bool(needed) and needed <= query_literals
+            name = re.sub(r"\(.*?\)", " ", term["term"])  # "test tariffs (via X)" is named by "test tariffs"
+            named = all(any(_match_strength(t, w) for w in asked) for t in tokens(name))
+            found.append((term, applied, leave_out and named))
+    return found
+
+
+def left_out_issues(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[str]:
+    """Records left out that the question did not ask to leave out, or kept when it asked to leave them out.
+
+    The data is answered as it is: test, dummy or internal records count like any others unless the
+    question says to leave them out.
+    """
+    issues = []
+    for term, applied, asked in _left_out_terms(sql, index, extracted, dialect):
+        if applied and not asked:
+            issues.append(
+                f"the query leaves out '{term['term']}' ({term['definition']}), but the question does not ask to; "
+                f"count them like any other records. Run the same query again if they must be left out"
+            )
+        elif asked and not applied:
+            issues.append(
+                f"the question asks to leave out '{term['term']}' ({term['definition']}); add: {term['exclusion_sql']}"
+            )
     return sorted(set(issues))
+
+
+def left_out_notes(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[dict[str, str]]:
+    """Plain notes for record types that are usually left out but were counted."""
+    notes, seen = [], set()
+    for term, applied, _ in _left_out_terms(sql, index, extracted, dialect):
+        name = " ".join(re.sub(r"\(.*?\)", " ", term["term"]).split()).lower()
+        if applied or name in seen:
+            continue
+        seen.add(name)
+        notes.append(
+            {
+                "plain": f"this includes records marked as {name}, which are often left out; ask again excluding "
+                f"them if they should not count",
+                "technical": f"{term['table']}: left-out term '{term['term']}' not applied ({term['sql']})",
+            }
+        )
+    return notes
 
 
 def dropped_category_issues(adapter: SourceAdapter, index: LayerIndex, sql: str, dialect: str) -> list[str]:
@@ -630,6 +671,7 @@ def run_agent(
                     if result.rows or empty is not None:
                         try:
                             dropped = unmatched_rows(adapter, index, sql, adapter.sqlglot_dialect)
+                            dropped += left_out_notes(sql, index, extracted, adapter.sqlglot_dialect)
                             answer["notes"] = [u["plain"] for u in dropped]
                             answer["technical_notes"] = [u["technical"] for u in dropped]
                         except Exception as exc:  # a note we could not compute is not worth failing the answer

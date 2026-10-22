@@ -12,6 +12,7 @@ rows, and a summary of how many answers were correct, consistent and fast.
 
 import argparse
 import json
+import os
 import re
 import statistics
 import time
@@ -39,6 +40,8 @@ RESULTS = ROOT / "eval" / "results"
 DECIMALS = 4  # numbers equal to this many decimals are the same answer
 SAVED_ROWS = 200  # rows kept per run in the results files; comparison always uses every row
 FAST_SECONDS = 60.0  # a run within this time counts as fast
+# personal-data columns are masked in the saved results unless EVAL_MASK_PERSONAL_DATA=false
+MASK_PERSONAL_DATA = os.getenv("EVAL_MASK_PERSONAL_DATA", "true").strip().lower() not in ("false", "0", "no")
 
 # a run is correct when its verdict is one of these
 CORRECT = {"match", "match_extra_columns", "correct_refusal"}
@@ -183,8 +186,8 @@ def _sensitive_columns(index: LayerIndex) -> set[str]:
 
 
 def _for_saving(columns: list[str], rows: list[list], sensitive: set[str]) -> list[list]:
-    """Rows as written to the results files: capped, with personal-data columns masked."""
-    hide = {i for i, c in enumerate(columns) if c.upper() in sensitive}
+    """Rows as written to the results files: capped, with personal-data columns masked (unless turned off)."""
+    hide = {i for i, c in enumerate(columns) if c.upper() in sensitive} if MASK_PERSONAL_DATA else set()
     return [["***" if i in hide and v is not None else v for i, v in enumerate(row)] for row in rows[:SAVED_ROWS]]
 
 
