@@ -1,93 +1,104 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { askQuestion } from "./api.js";
 import AnswerCard from "./AnswerCard.jsx";
 import AskForm from "./AskForm.jsx";
 import Evidence from "./Evidence.jsx";
 import ResultTable from "./ResultTable.jsx";
 
-const HISTORY_KEY = "rosetta.history";
-const HISTORY_MAX = 8;
+const HISTORY_KEY = "rosetta.conversation";
+const HISTORY_MAX = 20;
 
-// Recent answers live only in this browser; reading or writing may fail (private mode), which is fine.
-function loadHistory() {
+// The conversation lives only in this browser; storage may be unavailable (private mode), which is fine.
+function loadTurns() {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+    return (JSON.parse(localStorage.getItem(HISTORY_KEY)) || []).filter((t) => t.status !== "pending");
   } catch {
     return [];
   }
 }
 
-function saveHistory(items) {
+function saveTurns(turns) {
   try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(items));
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(turns.filter((t) => t.status !== "pending").slice(-HISTORY_MAX)));
   } catch {
     // not remembered across reloads
   }
 }
 
+function Reply({ turn }) {
+  if (turn.status === "pending") {
+    return (
+      <div className="thinking">
+        <span className="dot" />
+        Reading the question, finding the data and checking the query…
+      </div>
+    );
+  }
+  if (turn.status === "error") return <p className="error">{turn.error}</p>;
+  const result = turn.result;
+  return (
+    <>
+      <AnswerCard result={result} />
+      <ResultTable columns={result.columns} rows={result.rows || []} />
+      <Evidence result={result} />
+    </>
+  );
+}
+
 export default function App() {
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [history, setHistory] = useState(loadHistory);
+  const [turns, setTurns] = useState(loadTurns);
+  const end = useRef(null);
+  const busy = turns.some((t) => t.status === "pending");
+
+  useEffect(() => {
+    end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    saveTurns(turns);
+  }, [turns]);
 
   async function ask(question, asOf) {
-    setBusy(true);
-    setError("");
+    const id = Date.now();
+    setTurns((ts) => [...ts, { id, question, status: "pending" }]);
+    let update;
     try {
-      const answer = await askQuestion(question, asOf);
-      setResult(answer);
-      const next = [answer, ...history.filter((h) => h.question !== answer.question)].slice(0, HISTORY_MAX);
-      setHistory(next);
-      saveHistory(next);
+      update = { status: "done", result: await askQuestion(question, asOf) };
     } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
+      update = { status: "error", error: e.message };
     }
+    setTurns((ts) => ts.map((t) => (t.id === id ? { ...t, ...update } : t)));
   }
 
   return (
-    <main className="page">
-      <header className="brand">
-        <h1>Rosetta</h1>
-        <p>Ask your data a question.</p>
+    <div className="app">
+      <header className="topbar">
+        <span className="logo">Rosetta</span>
+        {turns.length > 0 && (
+          <button type="button" className="ghost" onClick={() => setTurns([])} disabled={busy}>
+            New chat
+          </button>
+        )}
       </header>
 
-      <AskForm onAsk={ask} busy={busy} />
+      <main className="thread">
+        {turns.length === 0 ? (
+          <div className="empty">
+            <h1>What would you like to know?</h1>
+            <p>Ask in plain words. Rosetta finds the data, shows the answer and how it worked it out.</p>
+          </div>
+        ) : (
+          turns.map((turn) => (
+            <section key={turn.id} className="turn">
+              <div className="bubble">{turn.question}</div>
+              <Reply turn={turn} />
+            </section>
+          ))
+        )}
+        <div ref={end} />
+      </main>
 
-      {history.length > 0 && (
-        <nav className="recent" aria-label="Recent questions">
-          {history.map((h) => (
-            <button
-              key={h.question}
-              type="button"
-              className={`chip ${result?.question === h.question ? "active" : ""}`}
-              onClick={() => setResult(h)}
-              title={h.question}
-            >
-              {h.question}
-            </button>
-          ))}
-        </nav>
-      )}
-
-      {error && <p className="error">{error}</p>}
-
-      {busy && (
-        <div className="thinking">
-          <span className="dot" />
-          Reading the question, finding the data and checking the query…
-        </div>
-      )}
-
-      {!busy && result && (
-        <>
-          <AnswerCard result={result} />
-          <ResultTable columns={result.columns} rows={result.rows || []} />
-          <Evidence result={result} />
-        </>
-      )}
-    </main>
+      <footer className="dock">
+        <AskForm onAsk={ask} busy={busy} />
+        <p className="fine">Answers come from your database; check the details under each answer.</p>
+      </footer>
+    </div>
   );
 }

@@ -1,17 +1,14 @@
 const STATUS = {
-  answered: { text: "Answered", tone: "ok" },
-  cannot_answer: { text: "Can't answer", tone: "warn" },
-  failed: { text: "Failed", tone: "bad" },
+  answered: null, // a normal answer needs no badge
+  cannot_answer: { text: "Can't answer from this data", tone: "warn" },
+  failed: { text: "Could not answer", tone: "bad" },
 };
 
 export default function AnswerCard({ result }) {
-  const status = STATUS[result.status] || { text: result.status, tone: "warn" };
+  const status = STATUS[result.status];
   return (
-    <section className="card">
-      <div className="card-head">
-        <span className={`badge ${status.tone}`}>{status.text}</span>
-        <span className="question">{result.question}</span>
-      </div>
+    <div className="answer">
+      {status && <span className={`badge ${status.tone}`}>{status.text}</span>}
       <p className="answer-text">{result.answer}</p>
       {result.explanation && <p className="explanation">{result.explanation}</p>}
       {result.notes?.length > 0 && (
@@ -21,6 +18,6 @@ export default function AnswerCard({ result }) {
           ))}
         </ul>
       )}
-    </section>
+    </div>
   );
 }
