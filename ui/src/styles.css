@@ -302,6 +302,32 @@ button:disabled {
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 12px;
+  /* tables keep a thin, quiet scrollbar so wider results show there is more */
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted) transparent;
+}
+
+.table-wrap::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+  height: 6px;
+}
+
+.table-wrap::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.table-wrap::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.table-wrap::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+.table-wrap::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 table {
