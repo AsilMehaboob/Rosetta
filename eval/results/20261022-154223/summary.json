@@ -1,0 +1,210 @@
+{
+  "run_id": "20261022-154223",
+  "started_at": "2026-10-22T15:42:23",
+  "finished_at": "2026-10-22T15:44:23",
+  "runs_per_question": 1,
+  "reference_date": "2026-10-22",
+  "model": "gemini-3.5-flash-lite",
+  "layer_version": "4fe9ae6e6482",
+  "fast_seconds": 60.0,
+  "stopped": null,
+  "overall": {
+    "questions": 8,
+    "runs": 8,
+    "accuracy": 0.625,
+    "answer_accuracy": 0.5,
+    "solved_every_run": 0.625,
+    "consistency": 1.0,
+    "query_success": 1.0,
+    "partial_runs": 1,
+    "refusal_accuracy": 1.0,
+    "false_refusals": 0.0,
+    "wrong_answers": 0.25,
+    "fast": 1.0,
+    "seconds": {
+      "mean": 13.65,
+      "median": 14.74,
+      "p95": 19.95,
+      "max": 19.95
+    },
+    "llm_calls": 25
+  },
+  "per_question": [
+    {
+      "id": "q1",
+      "level": "Easy",
+      "question": "List the active shops in Istanbul with their shop number, district and sales manager.",
+      "checks": "Works out what \"active\" means from the columns and values",
+      "note": null,
+      "expect": "answer",
+      "runs": 1,
+      "correct_runs": 0,
+      "verdicts": [
+        "partial"
+      ],
+      "accuracy": 0.0,
+      "consistent": true,
+      "seconds": {
+        "mean": 9.65,
+        "median": 9.65,
+        "p95": 9.65,
+        "max": 9.65
+      },
+      "llm_calls_mean": 3.0
+    },
+    {
+      "id": "q2",
+      "level": "Easy",
+      "question": "How many phone campaigns are available for sale, by device?",
+      "checks": "Works out what \"available for sale\" means",
+      "note": null,
+      "expect": "answer",
+      "runs": 1,
+      "correct_runs": 1,
+      "verdicts": [
+        "match_extra_columns"
+      ],
+      "accuracy": 1.0,
+      "consistent": true,
+      "seconds": {
+        "mean": 19.08,
+        "median": 19.08,
+        "p95": 19.08,
+        "max": 19.08
+      },
+      "llm_calls_mean": 4.0
+    },
+    {
+      "id": "q3",
+      "level": "Medium",
+      "question": "Which customer segment had the highest number of unique customers assigned in June 2025?",
+      "checks": "Counts customers, not records",
+      "note": null,
+      "expect": "answer",
+      "runs": 1,
+      "correct_runs": 1,
+      "verdicts": [
+        "match"
+      ],
+      "accuracy": 1.0,
+      "consistent": true,
+      "seconds": {
+        "mean": 11.81,
+        "median": 11.81,
+        "p95": 11.81,
+        "max": 11.81
+      },
+      "llm_calls_mean": 3.0
+    },
+    {
+      "id": "q4",
+      "level": "Medium",
+      "question": "Compare monthly gross adds and disconnections for July and August 2026, showing the month-over-month change in each.",
+      "checks": "Finds how lines joining and leaving are recorded, then compares periods",
+      "note": null,
+      "expect": "answer",
+      "runs": 1,
+      "correct_runs": 1,
+      "verdicts": [
+        "match"
+      ],
+      "accuracy": 1.0,
+      "consistent": true,
+      "seconds": {
+        "mean": 18.08,
+        "median": 18.08,
+        "p95": 18.08,
+        "max": 18.08
+      },
+      "llm_calls_mean": 4.0
+    },
+    {
+      "id": "q5",
+      "level": "Hard",
+      "question": "As of 28 August 2026, how many subscribers in the mobile base used a physical SIM and how many used an eSIM?",
+      "checks": "Discovers who counts as the \"mobile base\" and reads SIM history at a point in time",
+      "note": null,
+      "expect": "answer",
+      "runs": 1,
+      "correct_runs": 0,
+      "verdicts": [
+        "mismatch"
+      ],
+      "accuracy": 0.0,
+      "consistent": true,
+      "seconds": {
+        "mean": 19.95,
+        "median": 19.95,
+        "p95": 19.95,
+        "max": 19.95
+      },
+      "llm_calls_mean": 4.0
+    },
+    {
+      "id": "q6",
+      "level": "Hard",
+      "question": "For every disconnection in August 2026, which tariff was the subscription on at the moment of the event? Count disconnections per tariff.",
+      "checks": "Looks up the state of a line at a past moment",
+      "note": "The reference query joins the tariff list on its id without picking one version, and 5 tariffs have more than one version in that list, so 130 disconnections are counted twice (937 in total for 807 events). Rosetta counts each disconnection once, so this question is expected to be reported as a mismatch.\n",
+      "expect": "answer",
+      "runs": 1,
+      "correct_runs": 0,
+      "verdicts": [
+        "mismatch"
+      ],
+      "accuracy": 0.0,
+      "consistent": true,
+      "seconds": {
+        "mean": 17.67,
+        "median": 17.67,
+        "p95": 17.67,
+        "max": 17.67
+      },
+      "llm_calls_mean": 4.0
+    },
+    {
+      "id": "r1",
+      "level": "Refusal",
+      "question": "What was the average hotel room price in Paris last year?",
+      "checks": "Says so when the data cannot answer",
+      "note": null,
+      "expect": "cannot_answer",
+      "runs": 1,
+      "correct_runs": 1,
+      "verdicts": [
+        "correct_refusal"
+      ],
+      "accuracy": 1.0,
+      "consistent": true,
+      "seconds": {
+        "mean": 3.79,
+        "median": 3.79,
+        "p95": 3.79,
+        "max": 3.79
+      },
+      "llm_calls_mean": 1.0
+    },
+    {
+      "id": "r2",
+      "level": "Refusal",
+      "question": "How much revenue did flight ticket sales bring in during August 2026?",
+      "checks": "Says so when the data cannot answer",
+      "note": null,
+      "expect": "cannot_answer",
+      "runs": 1,
+      "correct_runs": 1,
+      "verdicts": [
+        "correct_refusal"
+      ],
+      "accuracy": 1.0,
+      "consistent": true,
+      "seconds": {
+        "mean": 9.14,
+        "median": 9.14,
+        "p95": 9.14,
+        "max": 9.14
+      },
+      "llm_calls_mean": 2.0
+    }
+  ]
+}

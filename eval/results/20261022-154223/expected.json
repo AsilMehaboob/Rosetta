@@ -1,0 +1,700 @@
+{
+  "q1": {
+    "sql": "SELECT SHOP_ID, SHOP_NUM, SHOP_NAME, SHOP_DISTRICT, SALES_MANAGER_USER_NAME\nFROM VID.D_SHOP\nWHERE SHOP_CITY = 'İSTANBUL'\n  AND SHOP_STATUS = 'Active'\n  AND SHOP_EDT >= TO_DATE('2026-10-22 15:42:23', 'YYYY-MM-DD HH24:MI:SS')\nORDER BY SHOP_DISTRICT, SHOP_NAME\n",
+    "columns": [
+      "SHOP_ID",
+      "SHOP_NUM",
+      "SHOP_NAME",
+      "SHOP_DISTRICT",
+      "SALES_MANAGER_USER_NAME"
+    ],
+    "rows": [
+      [
+        5046,
+        "VS005046",
+        "Ataşehir Vodafone Cep Merkezi 3",
+        "Ataşehir",
+        "asli.erdogan"
+      ],
+      [
+        5010,
+        "VS005010",
+        "Ataşehir Vodafone Shop",
+        "Ataşehir",
+        "hatice.simsek"
+      ],
+      [
+        5028,
+        "VS005028",
+        "Ataşehir Vodafone Shop 2",
+        "Ataşehir",
+        "mustafa.korkmaz"
+      ],
+      [
+        5012,
+        "VS005012",
+        "Bahçelievler Vodafone Shop",
+        "Bahçelievler",
+        "hatice.aslan"
+      ],
+      [
+        5048,
+        "VS005048",
+        "Bahçelievler Vodafone Shop 3",
+        "Bahçelievler",
+        "hatice.erdogan"
+      ],
+      [
+        5030,
+        "VS005030",
+        "Bahçelievler Vodafone İletişim 2",
+        "Bahçelievler",
+        "i̇brahim.aslan"
+      ],
+      [
+        5005,
+        "VS005005",
+        "Bakırköy Vodafone Shop",
+        "Bakırköy",
+        "mehmet.aslan"
+      ],
+      [
+        5023,
+        "VS005023",
+        "Bakırköy Vodafone Shop 2",
+        "Bakırköy",
+        "fatma.korkmaz"
+      ],
+      [
+        5041,
+        "VS005041",
+        "Bakırköy Vodafone İletişim 3",
+        "Bakırköy",
+        "hatice.aksoy"
+      ],
+      [
+        5015,
+        "VS005015",
+        "Başakşehir Vodafone Shop",
+        "Başakşehir",
+        "gul.ozturk"
+      ],
+      [
+        5033,
+        "VS005033",
+        "Başakşehir Vodafone İletişim 2",
+        "Başakşehir",
+        "ayse.korkmaz"
+      ],
+      [
+        5018,
+        "VS005018",
+        "Beylikdüzü Vodafone Cep Merkezi",
+        "Beylikdüzü",
+        "fatma.dogan"
+      ],
+      [
+        5054,
+        "VS005054",
+        "Beylikdüzü Vodafone İletişim 3",
+        "Beylikdüzü",
+        "gokhan.korkmaz"
+      ],
+      [
+        5026,
+        "VS005026",
+        "Beyoğlu Vodafone Shop 2",
+        "Beyoğlu",
+        "mehmet.gunes"
+      ],
+      [
+        5056,
+        "VS005056",
+        "Beşiktaş Vodafone Cep Merkezi 4",
+        "Beşiktaş",
+        "esra.bulut"
+      ],
+      [
+        5002,
+        "VS005002",
+        "Beşiktaş Vodafone Shop",
+        "Beşiktaş",
+        "emre.cetin"
+      ],
+      [
+        5020,
+        "VS005020",
+        "Beşiktaş Vodafone İletişim 2",
+        "Beşiktaş",
+        "ozgur.cetin"
+      ],
+      [
+        5038,
+        "VS005038",
+        "Beşiktaş Vodafone İletişim 3",
+        "Beşiktaş",
+        "emre.yildirim"
+      ],
+      [
+        5017,
+        "VS005017",
+        "Esenyurt Vodafone Cep Merkezi",
+        "Esenyurt",
+        "seyma.aydin"
+      ],
+      [
+        5035,
+        "VS005035",
+        "Esenyurt Vodafone Shop 2",
+        "Esenyurt",
+        "emre.kurt"
+      ],
+      [
+        5053,
+        "VS005053",
+        "Esenyurt Vodafone Shop 3",
+        "Esenyurt",
+        "merve.simsek"
+      ],
+      [
+        5027,
+        "VS005027",
+        "Fatih Vodafone Cep Merkezi 2",
+        "Fatih",
+        "gul.kilic"
+      ],
+      [
+        5009,
+        "VS005009",
+        "Fatih Vodafone İletişim",
+        "Fatih",
+        "merve.ozdemir"
+      ],
+      [
+        5019,
+        "VS005019",
+        "Kadıköy Vodafone Cep Merkezi 2",
+        "Kadıköy",
+        "burak.simsek"
+      ],
+      [
+        5001,
+        "VS005001",
+        "Kadıköy Vodafone Shop",
+        "Kadıköy",
+        "ayse.kaya"
+      ],
+      [
+        5037,
+        "VS005037",
+        "Kadıköy Vodafone Shop 3",
+        "Kadıköy",
+        "serkan.sahin"
+      ],
+      [
+        5049,
+        "VS005049",
+        "Kartal Vodafone Cep Merkezi 3",
+        "Kartal",
+        "i̇brahim.gunes"
+      ],
+      [
+        5013,
+        "VS005013",
+        "Kartal Vodafone Shop",
+        "Kartal",
+        "selin.yilmaz"
+      ],
+      [
+        5006,
+        "VS005006",
+        "Maltepe Vodafone Shop",
+        "Maltepe",
+        "mehmet.kara"
+      ],
+      [
+        5024,
+        "VS005024",
+        "Maltepe Vodafone Shop 2",
+        "Maltepe",
+        "ozgur.sahin"
+      ],
+      [
+        5042,
+        "VS005042",
+        "Maltepe Vodafone Shop 3",
+        "Maltepe",
+        "emre.gunes"
+      ],
+      [
+        5060,
+        "VS005060",
+        "Maltepe Vodafone İletişim 4",
+        "Maltepe",
+        "kerem.bulut"
+      ],
+      [
+        5007,
+        "VS005007",
+        "Pendik Vodafone Shop",
+        "Pendik",
+        "mehmet.ozkan"
+      ],
+      [
+        5043,
+        "VS005043",
+        "Pendik Vodafone Shop 3",
+        "Pendik",
+        "zeynep.kurt"
+      ],
+      [
+        5025,
+        "VS005025",
+        "Pendik Vodafone İletişim 2",
+        "Pendik",
+        "emre.aslan"
+      ],
+      [
+        5029,
+        "VS005029",
+        "Sarıyer Vodafone Cep Merkezi 2",
+        "Sarıyer",
+        "mehmet.koc"
+      ],
+      [
+        5011,
+        "VS005011",
+        "Sarıyer Vodafone İletişim",
+        "Sarıyer",
+        "zeynep.yilmaz"
+      ],
+      [
+        5047,
+        "VS005047",
+        "Sarıyer Vodafone İletişim 3",
+        "Sarıyer",
+        "emre.kurt"
+      ],
+      [
+        5052,
+        "VS005052",
+        "Zeytinburnu Vodafone Cep Merkezi 3",
+        "Zeytinburnu",
+        "huseyin.korkmaz"
+      ],
+      [
+        5016,
+        "VS005016",
+        "Zeytinburnu Vodafone Shop",
+        "Zeytinburnu",
+        "mehmet.polat"
+      ],
+      [
+        5034,
+        "VS005034",
+        "Zeytinburnu Vodafone Shop 2",
+        "Zeytinburnu",
+        "ceren.gunes"
+      ],
+      [
+        5014,
+        "VS005014",
+        "Ümraniye Vodafone Cep Merkezi",
+        "Ümraniye",
+        "burak.aksoy"
+      ],
+      [
+        5032,
+        "VS005032",
+        "Ümraniye Vodafone Cep Merkezi 2",
+        "Ümraniye",
+        "mustafa.yildiz"
+      ],
+      [
+        5050,
+        "VS005050",
+        "Ümraniye Vodafone Cep Merkezi 3",
+        "Ümraniye",
+        "zeynep.simsek"
+      ],
+      [
+        5039,
+        "VS005039",
+        "Üsküdar Vodafone Cep Merkezi 3",
+        "Üsküdar",
+        "ceren.aksoy"
+      ],
+      [
+        5057,
+        "VS005057",
+        "Üsküdar Vodafone Cep Merkezi 4",
+        "Üsküdar",
+        "seyma.aydin"
+      ],
+      [
+        5021,
+        "VS005021",
+        "Üsküdar Vodafone Shop 2",
+        "Üsküdar",
+        "ahmet.cetin"
+      ],
+      [
+        5022,
+        "VS005022",
+        "Şişli Vodafone Cep Merkezi 2",
+        "Şişli",
+        "tolga.simsek"
+      ],
+      [
+        5058,
+        "VS005058",
+        "Şişli Vodafone Shop 4",
+        "Şişli",
+        "mustafa.polat"
+      ],
+      [
+        5040,
+        "VS005040",
+        "Şişli Vodafone İletişim 3",
+        "Şişli",
+        "merve.dogan"
+      ]
+    ],
+    "row_count": 50
+  },
+  "q2": {
+    "sql": "SELECT DEVICE_COMMERCIAL_NAME, COUNT(OFFER_ID) AS CAMPAIGN_COUNT\nFROM VID.D_DEVICE_OFFERING\nWHERE OFFER_EDT >= TO_DATE('2026-10-22 15:42:26', 'YYYY-MM-DD HH24:MI:SS')\n  AND PRODUCT_SUB_TYPE_CD = 'PHONE'\nGROUP BY DEVICE_COMMERCIAL_NAME\nORDER BY CAMPAIGN_COUNT DESC, DEVICE_COMMERCIAL_NAME\n",
+    "columns": [
+      "DEVICE_COMMERCIAL_NAME",
+      "CAMPAIGN_COUNT"
+    ],
+    "rows": [
+      [
+        "Samsung Galaxy A55",
+        6
+      ],
+      [
+        "General Mobile GM 24",
+        4
+      ],
+      [
+        "Honor X8b",
+        4
+      ],
+      [
+        "Reeder S19 Max Pro",
+        4
+      ],
+      [
+        "Samsung Galaxy A35",
+        4
+      ],
+      [
+        "TCL 50 SE",
+        4
+      ],
+      [
+        "Tecno Spark 20",
+        4
+      ],
+      [
+        "Xiaomi Redmi Note 13 Pro",
+        4
+      ],
+      [
+        "Xiaomi Redmi Note 14",
+        4
+      ],
+      [
+        "vivo Y36",
+        4
+      ],
+      [
+        "Huawei nova 12 SE",
+        3
+      ],
+      [
+        "Samsung Galaxy A16",
+        3
+      ],
+      [
+        "Xiaomi Redmi 13C",
+        3
+      ],
+      [
+        "iPhone 16",
+        3
+      ],
+      [
+        "iPhone 16 Pro Max",
+        3
+      ],
+      [
+        "Samsung Galaxy S24",
+        2
+      ],
+      [
+        "Samsung Galaxy Z Flip6",
+        2
+      ],
+      [
+        "iPhone 16 Pro",
+        2
+      ],
+      [
+        "realme C67",
+        2
+      ],
+      [
+        "Oppo A79",
+        1
+      ],
+      [
+        "Samsung Galaxy S23",
+        1
+      ],
+      [
+        "Samsung Galaxy S24 FE",
+        1
+      ],
+      [
+        "iPhone 15",
+        1
+      ]
+    ],
+    "row_count": 23
+  },
+  "q3": {
+    "sql": "SELECT SEGMENT, COUNT(DISTINCT UNIFIED_CUSTOMER_ID) AS UNIQUE_CUSTOMER_COUNT\nFROM VID.D_CONV_SEGMENT_HIST\nWHERE SEGMENT_SDT >= DATE '2025-06-01'\n  AND SEGMENT_SDT <  DATE '2025-07-01'\nGROUP BY SEGMENT\nORDER BY UNIQUE_CUSTOMER_COUNT DESC\n",
+    "columns": [
+      "SEGMENT",
+      "UNIQUE_CUSTOMER_COUNT"
+    ],
+    "rows": [
+      [
+        "MASS",
+        963
+      ],
+      [
+        "SME",
+        423
+      ],
+      [
+        "YOUTH",
+        300
+      ],
+      [
+        "SOHO",
+        148
+      ],
+      [
+        "CORPORATE",
+        133
+      ],
+      [
+        "MULTICULTURAL",
+        84
+      ],
+      [
+        "VIP",
+        48
+      ]
+    ],
+    "row_count": 7
+  },
+  "q4": {
+    "sql": "SELECT EVENT_MONTH, GROSS_ADDS, DISCONNECTIONS,\n       GROSS_ADDS - LAG(GROSS_ADDS) OVER (ORDER BY EVENT_MONTH) AS GROSS_ADD_CHANGE,\n       DISCONNECTIONS - LAG(DISCONNECTIONS) OVER (ORDER BY EVENT_MONTH) AS DISCONNECTION_CHANGE\nFROM (\n  SELECT TRUNC(EVENT_DT, 'MM') AS EVENT_MONTH,\n         SUM(CASE WHEN LIFECYCLE_GROUP_CD = 'grossadd' THEN 1 ELSE 0 END) AS GROSS_ADDS,\n         SUM(CASE WHEN LIFECYCLE_GROUP_CD = 'disconnection' THEN 1 ELSE 0 END) AS DISCONNECTIONS\n  FROM VID.F_LIFECYCLE_KPI\n  WHERE EVENT_DT >= DATE '2026-07-01' AND EVENT_DT < DATE '2026-09-01'\n  GROUP BY TRUNC(EVENT_DT, 'MM')\n)\nORDER BY EVENT_MONTH\n",
+    "columns": [
+      "EVENT_MONTH",
+      "GROSS_ADDS",
+      "DISCONNECTIONS",
+      "GROSS_ADD_CHANGE",
+      "DISCONNECTION_CHANGE"
+    ],
+    "rows": [
+      [
+        "2026-07-01T00:00:00",
+        1722,
+        1067,
+        null,
+        null
+      ],
+      [
+        "2026-08-01T00:00:00",
+        1474,
+        921,
+        -248,
+        -146
+      ]
+    ],
+    "row_count": 2
+  },
+  "q5": {
+    "sql": "SELECT f.SNAPSHOT_DT, h.ESIM_IND, COUNT(f.SUBSCRIPTION_ID) AS SUBSCRIBER_COUNT\nFROM VID.F_SUBSCRIPTION_D f\nJOIN VID.D_STATUS s ON s.STATUS_ID = f.STATUS_ID\nLEFT JOIN VID.D_ICCI_IMSI_SUBS_HIST h\n  ON h.SUBSCRIPTION_ID = f.SUBSCRIPTION_ID\n AND TRUNC(h.ICCI_IMSI_SUBS_SDT) <= f.SNAPSHOT_DT\n AND h.ICCI_IMSI_SUBS_EDT > f.SNAPSHOT_DT + INTERVAL '23:59:59' HOUR TO SECOND\nWHERE f.SNAPSHOT_DT = DATE '2026-08-28'\n  AND s.VFTR_BASE_IND = 'Y'\n  AND f.MAIN_OFFER_ID <> '1-IFF31UQ'\nGROUP BY f.SNAPSHOT_DT, h.ESIM_IND\nORDER BY h.ESIM_IND\n",
+    "columns": [
+      "SNAPSHOT_DT",
+      "ESIM_IND",
+      "SUBSCRIBER_COUNT"
+    ],
+    "rows": [
+      [
+        "2026-08-28T00:00:00",
+        "N",
+        6691
+      ],
+      [
+        "2026-08-28T00:00:00",
+        "Y",
+        831
+      ],
+      [
+        "2026-08-28T00:00:00",
+        null,
+        91
+      ]
+    ],
+    "row_count": 3
+  },
+  "q6": {
+    "sql": "SELECT t.TARIFF_NAME, COUNT(*) AS DISCONNECTIONS\nFROM VID.F_LIFECYCLE_KPI k\nJOIN VID.D_SUBS_TARIFF_HIST th\n  ON th.SUBSCRIPTION_ID = k.SUBSCRIPTION_ID\n AND k.EVENT_DT >= th.SUBS_OFFER_SDT\n AND k.EVENT_DT <  th.SUBS_OFFER_EDT\nJOIN VID.D_TARIFF t ON t.OFFER_ID = th.OFFER_ID\nWHERE k.LIFECYCLE_GROUP_CD = 'disconnection'\n  AND k.EVENT_DT >= DATE '2026-08-01' AND k.EVENT_DT < DATE '2026-09-01'\nGROUP BY t.TARIFF_NAME\nORDER BY DISCONNECTIONS DESC\n",
+    "columns": [
+      "TARIFF_NAME",
+      "DISCONNECTIONS"
+    ],
+    "rows": [
+      [
+        "Faturasız Süper 10GB",
+        89
+      ],
+      [
+        "Faturasız Kolay 6GB",
+        84
+      ],
+      [
+        "Faturasız Süper 20GB",
+        58
+      ],
+      [
+        "M2M Takip Paketi",
+        56
+      ],
+      [
+        "GençAvantaj 12GB",
+        54
+      ],
+      [
+        "Her Şey Dahil 25GB",
+        52
+      ],
+      [
+        "Uyumlu 20GB",
+        48
+      ],
+      [
+        "Dijitalleşen Esnaf 30GB",
+        47
+      ],
+      [
+        "Süper Dolu Paket 8GB",
+        32
+      ],
+      [
+        "GençAvantaj 20GB",
+        32
+      ],
+      [
+        "Red 20GB",
+        29
+      ],
+      [
+        "İşOrtağım 20GB",
+        26
+      ],
+      [
+        "Red 30GB",
+        24
+      ],
+      [
+        "Kolay Paket 10GB",
+        22
+      ],
+      [
+        "Esnaf Özel 40GB",
+        21
+      ],
+      [
+        "Tablet Data 10GB",
+        20
+      ],
+      [
+        "Ev İnterneti Yedek 30GB",
+        20
+      ],
+      [
+        "İşOrtağım Pro 50GB",
+        19
+      ],
+      [
+        "Uyumlu 10GB",
+        18
+      ],
+      [
+        "Uyumlu 15GB",
+        18
+      ],
+      [
+        "Kolay Paket 15GB",
+        17
+      ],
+      [
+        "M2M Araç Paketi",
+        17
+      ],
+      [
+        "Kolay Paket 5GB",
+        17
+      ],
+      [
+        "Tablet Data 25GB",
+        16
+      ],
+      [
+        "Acil Durum / Test Hattı",
+        16
+      ],
+      [
+        "Süper Dolu Paket 16GB",
+        15
+      ],
+      [
+        "Esnaf Özel 25GB",
+        15
+      ],
+      [
+        "Red 40GB Plus",
+        14
+      ],
+      [
+        "İşOrtağım 35GB",
+        11
+      ],
+      [
+        "Red Elite 60GB",
+        10
+      ],
+      [
+        "Vodafone'lu Kal 15GB",
+        7
+      ],
+      [
+        "Her Şey Dahil Pasaport 35GB",
+        7
+      ],
+      [
+        "Cepte Wifi 50GB",
+        6
+      ]
+    ],
+    "row_count": 33
+  }
+}
