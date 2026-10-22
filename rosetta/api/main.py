@@ -1,11 +1,13 @@
 """HTTP front door. Thin: it calls the Learn and Answer modules and holds no logic."""
 
+from datetime import date
 from typing import Literal
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from rosetta.adapters import get_adapter
+from rosetta.answer.extract import extract
 from rosetta.config import Settings
 from rosetta.learn.annotate import run_annotate
 from rosetta.learn.assemble import run_assemble
@@ -20,6 +22,13 @@ app = FastAPI(title="Rosetta", version="0.1.0")
 class LearnRequest(BaseModel):
     stage: Literal["profile", "detect", "annotate", "assemble"] = "profile"
     force: bool = False  # re-measure even when a table's fingerprint is unchanged
+
+
+class ExtractRequest(BaseModel):
+    question: str = Field(min_length=1, examples=["How many overdue invoices were there in Berlin last month?"])
+    reference_date: date | None = Field(
+        default=None, description='"Today" for relative dates such as "last month"; defaults to REFERENCE_DATE or today'
+    )
 
 
 @app.get("/health")
@@ -45,3 +54,12 @@ def learn(request: LearnRequest) -> dict:
         return run_profile(adapter, storage, force=request.force)
     finally:
         adapter.close()
+
+
+@app.post("/extract")
+def extract_question(request: ExtractRequest) -> dict:
+    """Show how a question is read: its business words, values and dates. Nothing is queried."""
+    settings = Settings.from_env()
+    llm = GeminiLLM(settings.gemini_api_key, settings.gemini_model, Storage(settings.data_dir))
+    reference = request.reference_date or settings.reference_date or date.today()
+    return extract(llm, request.question, reference)
