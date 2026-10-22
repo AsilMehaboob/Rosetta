@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { getEvalStatus, getEvaluation, listEvaluations, startEvaluation } from "./api.js";
+import { getBenchmark, getEvalStatus, getEvaluation, listEvaluations, startEvaluation } from "./api.js";
 import ResultTable from "./ResultTable.jsx";
 import SqlBlock from "./SqlBlock.jsx";
 
@@ -332,6 +332,8 @@ export default function Evaluation() {
   const [open, setOpen] = useState(null);
   const [runs, setRuns] = useState(2);
   const [asOf, setAsOf] = useState("");
+  const [questions, setQuestions] = useState([]);
+  const [only, setOnly] = useState(""); // "" = every question
   const [error, setError] = useState("");
 
   const refresh = useCallback(async (pickNewest) => {
@@ -347,6 +349,7 @@ export default function Evaluation() {
   useEffect(() => {
     refresh(false);
     getEvalStatus().then(setStatus).catch(() => {});
+    getBenchmark().then(setQuestions).catch(() => {});
   }, [refresh]);
 
   // follow a running evaluation, then show its results
@@ -374,12 +377,13 @@ export default function Evaluation() {
     getEvaluation(selected).then(setDetail).catch((e) => setError(e.message));
   }, [selected]);
 
-  async function run() {
+  // every question, or just the ones given (a single question can be checked on its own)
+  async function run(ids) {
     setError("");
     try {
       const count = Math.min(10, Math.max(1, Math.round(Number(runs)) || 2));
       setRuns(count);
-      setStatus(await startEvaluation(count, null, asOf));
+      setStatus(await startEvaluation(count, ids?.length ? ids : only ? [only] : null, asOf));
     } catch (e) {
       setError(e.message);
     }
@@ -400,6 +404,17 @@ export default function Evaluation() {
         </div>
         <div className="toolbar">
           <label className="field">
+            Questions
+            <select value={only} onChange={(e) => setOnly(e.target.value)} disabled={status.running}>
+              <option value="">All {questions.length || ""}</option>
+              {questions.map((q) => (
+                <option key={q.id} value={q.id} title={q.question}>
+                  {q.id} · {q.level}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
             Runs
             <input
               type="number"
@@ -415,7 +430,7 @@ export default function Evaluation() {
             Today is
             <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} disabled={status.running} />
           </label>
-          <button type="button" className="primary" onClick={run} disabled={status.running}>
+          <button type="button" className="primary" onClick={() => run()} disabled={status.running}>
             {status.running ? "Running…" : "Run evaluation"}
           </button>
         </div>
@@ -493,6 +508,7 @@ export default function Evaluation() {
                   <th>Correct</th>
                   <th>Consistent</th>
                   <th>Median</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -512,10 +528,24 @@ export default function Evaluation() {
                       </td>
                       <td>{p.consistent ? "Yes" : "No"}</td>
                       <td className="num">{secs(p.seconds.median)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="ghost small-btn"
+                          title={`Ask ${p.id} again, ${runs} time(s)`}
+                          disabled={status.running}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            run([p.id]);
+                          }}
+                        >
+                          Run
+                        </button>
+                      </td>
                     </tr>
                     {open === p.id && detail && (
                       <tr className="q-open">
-                        <td colSpan={7}>
+                        <td colSpan={8}>
                           <QuestionDetail
                             item={p}
                             runs={detail.runs.filter((r) => r.question_id === p.id)}

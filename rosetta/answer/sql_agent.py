@@ -24,7 +24,7 @@ from rosetta.answer.sqlcheck import check_query
 from rosetta.learn.profile import to_json_value
 from rosetta.llm import JsonLLM
 
-PROMPT_VERSION = "sql-agent-6"
+PROMPT_VERSION = "sql-agent-7"
 
 
 @dataclass(frozen=True)
@@ -94,6 +94,9 @@ Rules:
    every group with its figure, sorted so the asked-for extreme comes first (descending for highest/most, ascending
    for lowest/fewest). Do not cut the result to one row (no ROWNUM, FETCH FIRST, LIMIT or rank filter) unless the
    question asks for a number of them ("top 3"): the full ranking is the evidence and shows ties.
+10d. A column may list "same_as": other columns that name the same thing (each value of one goes with exactly one
+   value of the other, such as a short name and a full name). When you group by or list such a column, also select
+   (and group by) its same_as columns, so every name of each item is shown; the counts do not change.
 {dialect_rules}"""
 
 
@@ -134,7 +137,7 @@ def table_brief(index: LayerIndex, key: str) -> dict[str, Any]:
     columns = []
     for c in t["columns"]:
         entry = {k: c[k] for k in ("name", "type", "description") if c.get(k)}
-        for k in ("values", "meanings", "sensitive"):
+        for k in ("values", "meanings", "sensitive", "same_as"):
             if c.get(k):
                 entry[k] = c[k]
         columns.append(entry)
@@ -395,6 +398,33 @@ def ranking_issues(sql: str, extracted: dict, dialect: str) -> list[str]:
     return issues
 
 
+def same_name_issues(sql: str, index: LayerIndex, dialect: str) -> list[str]:
+    """A grouped or listed column shown without its other names (same_as) from the same table."""
+    issues = []
+    tree = sqlglot.parse_one(sql, read=dialect)
+    for scope in traverse_scope(tree):
+        select = scope.expression
+        if not isinstance(select, exp.Select) or not (select.args.get("group") or scope.is_root):
+            continue
+        tables = {a: src for a, src in scope.sources.items() if isinstance(src, exp.Table)}
+        shown = [p.this if isinstance(p, exp.Alias) else p for p in select.expressions]
+        shown_cols = [c for c in shown if isinstance(c, exp.Column)]
+        present = {c.name.upper() for c in shown_cols}
+        for col in shown_cols:
+            src = tables.get(col.table) if col.table else (next(iter(tables.values())) if len(tables) == 1 else None)
+            key = _layer_key(index, src) if src is not None else None
+            if key is None:
+                continue
+            column = next((c for c in index.tables[key]["columns"] if c["name"].upper() == col.name.upper()), None)
+            missing = [o for o in (column or {}).get("same_as", []) if o.upper() not in present]
+            if missing:
+                issues.append(
+                    f"{col.name} has other names for the same thing in {key}: {', '.join(missing)}; select them too "
+                    f"(and add them to GROUP BY) so every name is shown"
+                )
+    return sorted(set(issues))
+
+
 def started_in_issues(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[str]:
     """A question about what began in a period, answered with versions merely valid during it.
 
@@ -566,6 +596,7 @@ def run_agent(
                 + count_grain_issues(sql, index, extracted, dialect)
                 + started_in_issues(sql, index, extracted, dialect)
                 + ranking_issues(sql, extracted, dialect)
+                + same_name_issues(sql, index, dialect)
                 + left_out_issues(sql, index, extracted, dialect)
             )
             if not problems and sql not in warned:

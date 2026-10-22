@@ -37,9 +37,11 @@ VERIFICATIONS = "verifications"
 
 @dataclass(frozen=True)
 class AssembleConfig:
-    version: str = "assemble-2"
+    version: str = "assemble-3"
     derive_max_parent_rows: int = 50  # filters on reference tables this small are carried through links
     column_values_max: int = 50  # code values listed in the layer
+    same_name_min_distinct: int = 3  # columns with fewer values pair up by chance too often
+    same_name_max_pairs: int = 40  # one-to-one checks per table
     timeout_seconds: int = 60
     workers: int = 4
     overrides_path: str = "semantic/overrides.yaml"
@@ -222,7 +224,55 @@ def verify_term(
     return {**result, "status": "verified", "proof": proof}
 
 
-def _table_section(key: str, finding: dict, profile: dict, annotation: dict | None, cfg: AssembleConfig) -> dict:
+def _same_names(adapter: SourceAdapter, key: str, finding: dict, profile: dict, cfg: AssembleConfig) -> dict[str, list[str]]:
+    """Text columns that name the same thing: each value of one goes with exactly one value of the other.
+
+    A short name and a full name of one item group rows identically, so either answers "by item";
+    knowing both lets an answer show every name. Only readable names take part (most values hold a
+    space or lowercase letters): identifier codes can pair one-to-one by coincidence while meaning
+    different things. Candidates have about the same number of values; the database then confirms
+    the pairing is one-to-one on the rows where both are filled.
+    """
+    rows = finding["row_count"]
+
+    def readable(column: dict) -> bool:
+        values = [v["value"] for v in column.get("values") or [] if isinstance(v["value"], str)]
+        return bool(values) and sum(bool(re.search(r"\s|[a-z]", v)) for v in values) >= 0.5 * len(values)
+
+    candidates = [
+        c for c in profile["columns"]
+        if not c["sensitive"]
+        and adapter.type_family(c["data_type"]) == "text"
+        and finding["columns"][c["name"]]["shape"] in ("code", "text")
+        and cfg.same_name_min_distinct <= c["distinct_count"] < rows
+        and readable(c)
+    ]
+    pairs = [
+        (a["name"], b["name"])
+        for i, a in enumerate(candidates)
+        for b in candidates[i + 1:]
+        if abs(a["distinct_count"] - b["distinct_count"]) <= 0.02 * max(a["distinct_count"], b["distinct_count"])
+    ][: cfg.same_name_max_pairs]
+    src, q = _src(adapter, key), adapter.quote
+    same: dict[str, set[str]] = {}
+    for a, b in pairs:
+        both = f"{q(a)} IS NOT NULL AND {q(b)} IS NOT NULL"
+        da, db = adapter.run_select(
+            f"SELECT COUNT(DISTINCT {q(a)}), COUNT(DISTINCT {q(b)}) FROM {src} WHERE {both}", timeout=cfg.timeout_seconds
+        ).rows[0]
+        combos = adapter.run_select(
+            f"SELECT COUNT(*) FROM (SELECT {q(a)}, {q(b)} FROM {src} WHERE {both} GROUP BY {q(a)}, {q(b)}) d",
+            timeout=cfg.timeout_seconds,
+        ).rows[0][0]
+        if da and da == db == combos:
+            same.setdefault(a, set()).add(b)
+            same.setdefault(b, set()).add(a)
+    return {name: sorted(others) for name, others in same.items()}
+
+
+def _table_section(
+    key: str, finding: dict, profile: dict, annotation: dict | None, cfg: AssembleConfig, same: dict[str, list[str]]
+) -> dict:
     annotation = annotation or {}
     described = {c["name"]: c for c in annotation.get("columns", [])}
     meanings: dict[str, dict[str, str]] = {}
@@ -244,6 +294,8 @@ def _table_section(key: str, finding: dict, profile: dict, annotation: dict | No
             entry["values"] = [v["value"] for v in c["values"][: cfg.column_values_max]]
         if c["name"] in meanings:
             entry["meanings"] = dict(sorted(meanings[c["name"]].items()))
+        if c["name"] in same:
+            entry["same_as"] = same[c["name"]]
         columns.append(entry)
     detail = _detail(finding)
     return {
@@ -342,8 +394,16 @@ def run_assemble(adapter: SourceAdapter, storage: Storage, cfg: AssembleConfig |
             entry["exclusion_sql"] = f"(CASE WHEN {entry['sql']} THEN 1 ELSE 0 END) = 0"
         (verified if result["status"] == "verified" else held_back).append(entry)
 
+    def names(k: str) -> dict[str, list[str]]:
+        try:
+            return _same_names(adapter, k, findings[k], profiles[k], cfg)
+        except Exception:  # a table that could not be measured simply lists no other names
+            return {}
+
+    with ThreadPoolExecutor(max_workers=cfg.workers) as pool:
+        same = dict(zip(sorted(findings), pool.map(names, sorted(findings))))
     tables = {
-        k: _table_section(k, findings[k], profiles[k], (annotations.get(k) or {}).get("annotation"), cfg)
+        k: _table_section(k, findings[k], profiles[k], (annotations.get(k) or {}).get("annotation"), cfg, same[k])
         for k in sorted(findings)
     }
     applied += _apply_column_overrides(tables, overrides)

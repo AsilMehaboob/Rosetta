@@ -2033,7 +2033,7 @@ sources:
   annotate:
   - model: gemini-3.5-flash-lite
     prompt_version: annotate-4
-  assemble_version: assemble-2
+  assemble_version: assemble-3
   detector_version: detect-3
 tables:
   GENAIVF.V_MNP_ACTUAL:
@@ -2396,6 +2396,9 @@ tables:
     - confidence: high
       description: Commercial name of the device associated with the offering.
       name: DEVICE_COMMERCIAL_NAME
+      same_as:
+      - DEV_TYPE_CD
+      - MODEL_NAME
       shape: code
       type: VARCHAR2(164)
       values:
@@ -2444,6 +2447,9 @@ tables:
     - confidence: high
       description: Device model name.
       name: MODEL_NAME
+      same_as:
+      - DEVICE_COMMERCIAL_NAME
+      - DEV_TYPE_CD
       shape: code
       type: VARCHAR2(108)
       values:
@@ -2525,6 +2531,9 @@ tables:
     - confidence: high
       description: Device Type Description.
       name: DEV_TYPE_CD
+      same_as:
+      - DEVICE_COMMERCIAL_NAME
+      - MODEL_NAME
       shape: code
       type: VARCHAR2(108)
       values:
@@ -4327,6 +4336,8 @@ tables:
         Samsung: Samsung second hand device brand
         Xiaomi: Xiaomi second hand device brand
       name: BUYBACK_DEVICE_BRAND
+      same_as:
+      - BUYBACK_DEVICE_MODEL
       shape: code
       type: VARCHAR2(44)
       values:
@@ -4336,6 +4347,8 @@ tables:
     - confidence: high
       description: Model information of related second hand device
       name: BUYBACK_DEVICE_MODEL
+      same_as:
+      - BUYBACK_DEVICE_BRAND
       shape: code
       type: VARCHAR2(80)
       values:
@@ -4713,6 +4726,9 @@ tables:
     - confidence: high
       description: The name of an Offering.
       name: TARIFF_NAME
+      same_as:
+      - COMMERCIAL_NAME
+      - TARIFF_DESC
       shape: code
       type: VARCHAR2(164)
       values:
@@ -4752,6 +4768,9 @@ tables:
     - confidence: high
       description: The description associated with an Offering.
       name: TARIFF_DESC
+      same_as:
+      - COMMERCIAL_NAME
+      - TARIFF_NAME
       shape: code
       type: VARCHAR2(216)
       values:
@@ -4791,6 +4810,9 @@ tables:
     - confidence: high
       description: It refers to commercial name of the offering that is marketed to the subscribers.
       name: COMMERCIAL_NAME
+      same_as:
+      - TARIFF_DESC
+      - TARIFF_NAME
       shape: code
       type: VARCHAR2(164)
       values:
@@ -7753,16 +7775,25 @@ tables:
     - confidence: high
       description: The name of an Offering.
       name: OFFER_NAME
+      same_as:
+      - COMMERCIAL_NAME
+      - OFFER_DESC
       shape: text
       type: VARCHAR2(264)
     - confidence: high
       description: The commercial name of an Offering.
       name: COMMERCIAL_NAME
+      same_as:
+      - OFFER_DESC
+      - OFFER_NAME
       shape: text
       type: VARCHAR2(264)
     - confidence: high
       description: The description for the offering.
       name: OFFER_DESC
+      same_as:
+      - COMMERCIAL_NAME
+      - OFFER_NAME
       shape: text
       type: VARCHAR2(264)
     - confidence: high
@@ -11195,4 +11226,4 @@ terms:
     test_sql: SELECT COUNT(*) FROM "VID"."VD_OFFERING" WHERE "OFFER_EDT" = TO_DATE('4712-12-31 23:59:59', 'YYYY-MM-DD
       HH24:MI:SS') AND "OFFER_SUBTYPE_CD" = 'VAS'
     value: 4
-version: 187cd29416b6
+version: 4fe9ae6e6482

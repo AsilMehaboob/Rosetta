@@ -309,7 +309,7 @@ def join_patterns(index: LayerIndex, link: dict, dialect: str) -> list[dict]:
 
 def _column_brief(column: dict) -> dict:
     brief = {k: column[k] for k in ("name", "type", "description") if column.get(k)}
-    for k in ("values", "meanings", "sensitive"):
+    for k in ("values", "meanings", "sensitive", "same_as"):
         if column.get(k):
             brief[k] = column[k]
     return brief
@@ -459,6 +459,11 @@ def retrieve(
             (c for c in t["columns"] if c["name"] in wanted),
             key=lambda c: (-column_scores.get((key, c["name"]), 0.0), c["name"]),
         )[: cfg.max_columns_per_table]
+        # other names of a chosen column come along, so an answer can show every name of a group
+        shown = {c["name"] for c in ranked_columns}
+        partners = {o for c in ranked_columns for o in c.get("same_as", [])} - shown
+        ranked_columns += sorted((c for c in t["columns"] if c["name"] in partners), key=lambda c: c["name"])
+        wanted |= partners
         # every short code list of the table, with its values: a question's word is often a value
         # ("premium", "overdue") whose column name gives no hint. Personal data never has values stored.
         shown = {c["name"] for c in ranked_columns}

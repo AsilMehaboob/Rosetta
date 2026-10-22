@@ -1088,3 +1088,18 @@ th.col-missing {
 .q-detail {
   padding: 4px 4px 12px;
 }
+
+.field select {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0;
+}
+
+.small-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+}
