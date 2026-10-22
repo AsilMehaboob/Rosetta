@@ -1,8 +1,7 @@
 # Rosetta
 
 Rosetta learns an unfamiliar database on its own and then answers business questions about it in plain words,
-with the numbers, the query that produced them, and the evidence behind them. It is our entry for the DataGenie
-Engineering Hackathon 2026, *Lost in Translation*.
+with the numbers, the query that produced them, and the evidence behind them.
 
 The source is an Oracle 23ai database with two schemas and 21 tables, no declared keys and no data dictionary.
 Rosetta is not told what any table or column means. It works that out from the data, writes it into a versioned
@@ -21,6 +20,9 @@ Rosetta is not told what any table or column means. It works that out from the d
 - **Proves it works (Checkpoint 4).** An evaluation harness asks the benchmark questions several times and compares
   the **data**, not the SQL. It reports how many answers were correct, consistent and fast, and explains every
   failure.
+- **Converses (Checkpoint 5, follow-ups).** In the chat, a follow-up such as "now split that by city" or "what
+  about March?" is understood from the earlier questions. It's rewritten into one complete question, and the SQL
+  agent starts from the previous query.
 - **Visualises the answer (Checkpoint 6).** When a chart tells the story better than a table, the chat shows an
   animated one. It picks between a line, side-by-side bars, a ranking or parts of a whole.
 
@@ -64,7 +66,10 @@ Rosetta is not told what any table or column means. It works that out from the d
                    └────────┬─────────┘
    ANSWER ──────────────────┼──────────────────────────────────────────
    (every question)         │
-        question ──▶  Extract    (LLM)    phrases, values, dates read by code
+        question ──▶  Converse   (LLM)    only after earlier questions: a follow-up
+                            │             becomes one complete question
+                            ▼
+                      Extract    (LLM)    phrases, values, dates read by code
                             │
                             ▼
                       Retrieve   (code)   tables, columns, terms, joins from the layer
@@ -95,7 +100,8 @@ rosetta/
   llm.py             Gemini client: JSON schema, temperature 0, cache, pacing, retries
   adapters/          SourceAdapter interface + Oracle (python-oracledb thin mode)
   learn/             profile.py, detect.py, annotate.py, assemble.py
-  answer/            extract.py, dates.py, retrieve.py, sql_agent.py, sqlcheck.py, answer.py, chart.py, pipeline.py
+  answer/            converse.py, extract.py, dates.py, retrieve.py, sql_agent.py, sqlcheck.py, answer.py, chart.py,
+                     pipeline.py
   api/main.py        FastAPI endpoints
   evaluate.py        evaluation harness (CLI + used by the API)
 semantic/            the published semantic layer (YAML), its changelog, and hand corrections
@@ -123,6 +129,20 @@ code. The correction is tested like any other term and listed in the changelog.
 
 `rosetta/answer/pipeline.py` runs these steps for every question, both in the API and in the harness.
 
+0. **Converse (LLM, only in a conversation).** The chat sends the last 3 questions, each as the complete question
+   that was answered, together with its query.
+   - **New question or follow-up:** one Gemini call decides. A follow-up ("now split that by district", "what
+     about Ankara?") is rewritten into **one complete question**: everything from the previous question is kept,
+     and only the asked change is applied.
+   - **Code checks the rewrite:** it may only use words the user already typed, plus small joining words like "by"
+     and "and". If it adds anything else, Rosetta answers the two questions combined as written.
+   - **The previous query goes to the SQL agent** as its starting point. The agent keeps the same definitions,
+     filters, joins and dates, and changes only what the follow-up asks.
+   - **Long chains work:** each turn is passed on as the complete question it was read as, so the context carries
+     forward.
+   - **The chat shows how a follow-up was read,** for example "Read as: How many active shops are there in Ankara,
+     split by district?".
+   - **Evaluation runs send no history,** so benchmark questions are answered exactly as before.
 1. **Extract (LLM).** It copies phrases from the question into slots: subjects, conditions, values, measures,
    grouping, dates and output shape. Code drops anything not actually in the question. Dates are read **in code**
    (`dates.py`): "June 2025", "as of 28 August", "last month" become exact half-open ranges, with a plain-language
@@ -257,7 +277,7 @@ improving how retrieval weighs the subject against a condition such as "base".
 |---|---|
 | `GET /health` | liveness |
 | `POST /learn` `{"stage": "profile" \| "detect" \| "annotate" \| "assemble"}` | run one Learn stage |
-| `POST /questions` `{"question": "...", "reference_date": "YYYY-MM-DD"?}` | answer a question: answer, explanation, rows, SQL, evidence, chart |
+| `POST /questions` `{"question": "...", "reference_date": "YYYY-MM-DD"?, "history": [{"question", "sql"}]?}` | answer a question, or a follow-up to the earlier turns in `history`: answer, explanation, rows, SQL, evidence, chart, and the complete question it was read as |
 | `POST /extract`, `/retrieve`, `/sql` | inspect one step of the answer pipeline |
 | `POST /eval/run` `{"runs": 2, "only": ["q3"]?}` | start an evaluation in the background |
 | `GET /eval/status`, `/eval/results`, `/eval/results/{id}`, `/eval/benchmark` | follow a run, read saved results |
@@ -268,6 +288,7 @@ React 18 + Vite, in `ui/`. It has two tabs:
 
 - **Chat:**
   - a ChatGPT-style thread with the answer, the explanation and any notes
+  - follow-ups use the earlier questions, with a "Read as" line showing the complete question
   - a chart when one helps, then the result table
   - "How was this calculated?": how dates were read, the definitions, rules and values used, and the query
 - **Evaluation:**
@@ -328,14 +349,16 @@ Tests (Detect stage, on a small SQLite database):
 Google **Gemini 3.5 Flash Lite** (`gemini-3.5-flash-lite`), chosen for its free-tier limits (15 requests a
 minute, 500 a day). It is called at temperature 0 with a fixed seed and JSON-schema output, and its requests are
 paced to stay under the per-minute limit. A typical question costs 3–5 calls: extract, 1–3 agent steps, and the
-answer text.
+answer text. A follow-up costs one more, to read it.
 
 ## Limitations and next steps
 
 - **Q5 retrieval:** weigh a question's subject against conditions such as "base", so the snapshot table wins over a
   usage table.
-- **Clarifying questions and follow-ups (bonus Checkpoint 5):** not built yet. The plan:
-  - rewrite a follow-up ("now split that by city") into a full question, using the previous turn and its query
-  - ask a clarifying question only when two verified definitions or tables would give different answers
+- **Clarifying questions (the rest of Checkpoint 5):** not built yet. Follow-ups are done. The plan:
+  - ask only on strong signals that code measures: "best" or "top" with no figure to rank by, or two verified
+    definitions of the same word that give different rows
+  - show the options as buttons, and handle the reply as a follow-up
+  - switch it off in evaluation runs
 - **Engines:** only the Oracle adapter exists. The adapter interface is small (quote, limit, date literals, type
   families, approximate distinct, error mapping), so others can be added.
