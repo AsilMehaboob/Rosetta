@@ -36,10 +36,12 @@ export default function AskForm({ onAsk, busy }) {
         autoFocus
       />
       <div className="composer-bar">
+        {/* "Today is" picker, hidden for now: answers use REFERENCE_DATE or the real today
         <label className="as-of" title="What 'today' means for words like 'last month'">
           Today is
           <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} />
         </label>
+        */}
         <button type="submit" className="send" disabled={busy || !question.trim()} aria-label="Ask">
           ↑
         </button>

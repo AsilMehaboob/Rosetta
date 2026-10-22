@@ -270,6 +270,7 @@ button:disabled {
 }
 
 .send {
+  margin-left: auto; /* stays on the right even when it is alone in the bar */
   width: 34px;
   height: 34px;
   border: none;

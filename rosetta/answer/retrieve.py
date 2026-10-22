@@ -315,6 +315,42 @@ def _column_brief(column: dict) -> dict:
     return brief
 
 
+_LEAVE_OUT = re.compile(r"\b(?:exclud\w*|without|except|other than|not counting|leav\w* out|non[- ])")
+
+
+def names_term(term: dict, question: str) -> bool:
+    """The question names every word of a left-out record type ("test accounts")."""
+    name = re.sub(r"\(.*?\)", " ", term["term"])  # "test tariffs (via X)" is named by "test tariffs"
+    asked = tokens(question)
+    return all(any(_match_strength(w, q) for q in asked) for w in tokens(name))
+
+
+def leave_out(term: dict, question: str) -> bool:
+    """Should this record type be left out for this question?
+
+    Test, dummy and internal records are counted like any others, so the answer matches the data as
+    it is; only a question that names them and says to leave them out ("excluding test accounts") does.
+    """
+    return names_term(term, question) and bool(_LEAVE_OUT.search(fold(question)))
+
+
+def exact_columns(index: "LayerIndex", phrase: str, tables: list[str] | None = None) -> list[tuple[str, str]]:
+    """Columns whose name or description holds every word of a phrase of two or more words.
+
+    "5G eligible" names an eligibility flag exactly; a "5G opt-in" flag shares one word only.
+    Words match as the same word or its abbreviation, not as a loose stem.
+    """
+    words = tokens(phrase)
+    if len(words) < 2:
+        return []
+    return [
+        (table, column)
+        for (table, column), counts in index.column_index.docs.items()
+        if (tables is None or table in tables)
+        and all(any(_match_strength(w, d) >= 0.8 for d in counts) for w in words)
+    ]
+
+
 def _place(
     index: LayerIndex, slot: str, ranked: list[tuple[float, str]], chosen: set[str], cfg: RetrieveConfig
 ) -> list[str]:
@@ -358,12 +394,7 @@ def retrieve(
     index: LayerIndex, extracted: dict[str, Any], dialect: str, cfg: RetrieveConfig | None = None
 ) -> dict[str, Any]:
     cfg = cfg or RetrieveConfig()
-    question_words = tokens(extracted.get("question", ""))
-
-    def asked_left_out(term: dict) -> bool:
-        """The question names every word of a left-out record type ("test accounts")."""
-        name = re.sub(r"\(.*?\)", " ", term["term"])  # "test tariffs (via X)" is named by "test tariffs"
-        return all(any(_match_strength(w, q) for q in question_words) for w in tokens(name))
+    question = extracted.get("question", "")
 
     term_scores: Counter = Counter()
     column_scores: Counter = Counter()
@@ -380,7 +411,7 @@ def retrieve(
                 contrib[key] += weight * s
             best_term: Counter = Counter()
             for key, s in index.term_index.score(query).items():
-                if index.terms[key].get("left_out_by_default") and not asked_left_out(index.terms[key]):
+                if index.terms[key].get("left_out_by_default") and not names_term(index.terms[key], question):
                     continue  # what a table leaves out says nothing about what it is about
                 term_scores[key] += weight * s
                 table = index.terms[key]["table"]
@@ -427,6 +458,21 @@ def retrieve(
     # the tables that best explain some phrase, strongest overall first
     chosen = sorted({e["table"] for e in explained}, key=lambda t: (-totals[t], t))[: cfg.max_tables]
 
+    # a condition whose every word names one column exactly brings that column's table along,
+    # even when a chosen table matches the phrase more loosely
+    exact_hits: set[tuple[str, str]] = set()
+    for slot in ("conditions", "group_by"):
+        for phrase in extracted.get(slot, []):
+            exact = exact_columns(index, phrase)
+            if not exact:
+                continue
+            exact_hits |= set(exact)
+            if any(t in chosen for t, _ in exact):
+                continue
+            best = min({t for t, _ in exact}, key=lambda t: (-totals[t], t))
+            chosen.append(best)
+            explained.append({"slot": slot, "phrase": phrase, "table": best})
+
     # connect each table to those already chosen along the shortest verified route
     tables, unreachable = [chosen[0]], []
     for table in chosen[1:]:
@@ -454,7 +500,7 @@ def retrieve(
         if re.search(rf"\b{re.escape(c['name'])}\b", index.terms[i]["sql"])
     }
     join_columns = {(l[side]["table"], l[side]["column"]) for l in joins for side in ("child", "parent")}
-    value_columns = {(h["table"], h["column"]) for h in value_hits}
+    value_columns = {(h["table"], h["column"]) for h in value_hits} | exact_hits
 
     packed_tables = []
     for key in tables:
@@ -499,12 +545,14 @@ def retrieve(
                     if t["kind"] == "history" and len((t["grain"] or {}).get("columns", [])) >= 2
                     else None
                 ),
-                # records the business normally leaves out (test, dummy, internal), learned from the data
+                # test, dummy or internal records (learned from the data) to leave out for this question;
+                # the agent is only shown the ones that apply, so it has nothing else to copy in
                 "left_out_by_default": [
                     {"term": x["term"], "definition": x["definition"], "exclusion_sql": x["exclusion_sql"],
                      "proof": x["verification"]["proof"]}
                     for x in index.terms.values()
                     if x["table"] == key and x.get("left_out_by_default") and x.get("exclusion_sql")
+                    and leave_out(x, question)
                 ],
                 "columns": [_column_brief(c) for c in ranked_columns],
                 "other_columns": sorted(c["name"] for c in t["columns"] if c["name"] not in wanted),

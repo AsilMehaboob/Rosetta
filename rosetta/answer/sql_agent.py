@@ -19,12 +19,20 @@ from sqlglot import exp
 from sqlglot.optimizer.scope import traverse_scope
 
 from rosetta.adapters.base import SourceAdapter
-from rosetta.answer.retrieve import LayerIndex, _match_strength, _stem, fold, tokens
+from rosetta.answer.retrieve import (
+    LayerIndex,
+    _match_strength,
+    _stem,
+    exact_columns,
+    fold,
+    leave_out,
+    tokens,
+)
 from rosetta.answer.sqlcheck import check_query
 from rosetta.learn.profile import to_json_value
 from rosetta.llm import JsonLLM
 
-PROMPT_VERSION = "sql-agent-8"
+PROMPT_VERSION = "sql-agent-9"
 
 
 @dataclass(frozen=True)
@@ -85,9 +93,9 @@ Rules:
    TRUNC(date, 'MM')) and one column per measure. Put each change on the later period's row with LAG over the period
    column. Never put several periods side by side in one row.
 10. Join only along the joins given. Select only what the question asks for, with readable aliases; order the rows.
-10a. A table may list records "left_out_by_default" (test, dummy, internal records found in the data). Count them like
-   any other records: the data is answered as it is. Only when the question asks to leave such records out
-   ("excluding test accounts", "without internal ones") add that record type's exclusion_sql, with the table's alias.
+10a. A table may list record types under "left_out_by_default" (test, dummy or internal records found in the data):
+   these are to be left out for this question, so add each one's exclusion_sql with the table's alias. Every record
+   type not listed there is counted like any other records; never add an exclusion of your own for it.
 10b. When the question splits a group into categories that come from a joined table ("how many have A and how many
    have B"), write LEFT JOIN with the same ON conditions, so records with no match stay in as their own group (an
    empty category) instead of silently disappearing.
@@ -399,6 +407,43 @@ def ranking_issues(sql: str, extracted: dict, dialect: str) -> list[str]:
     return issues
 
 
+def column_meaning_issues(sql: str, index: LayerIndex, extracted: dict, dialect: str, tables: list[str]) -> list[str]:
+    """A column that shares only some words of a condition, used where another column means it exactly.
+
+    "5G eligible" answered with a "5G opt-in" flag counts the wrong thing; when a column whose
+    name or description holds every word of the phrase is among the tables given, it is meant.
+    """
+    tree = sqlglot.parse_one(sql, read=dialect)
+    used = {c.name.upper() for c in tree.find_all(exp.Column)}
+    in_query = _query_tables(tree, index)
+    issues = []
+    for phrase in extracted.get("conditions", []) + extracted.get("group_by", []):
+        exact = exact_columns(index, phrase, tables)
+        if not exact or any(c.upper() in used for _, c in exact):
+            continue
+        words = tokens(phrase)
+        partial = [
+            (key, c["name"])
+            for key in in_query
+            for c in index.tables[key]["columns"]
+            if c["name"].upper() in used
+            and any(_match_strength(w, d) >= 0.8 for w in words for d in index.column_index.docs[(key, c["name"])])
+        ]
+        if not partial:
+            continue
+
+        def described(key: str, column: str) -> str:
+            text = next((c.get("description", "") for c in index.tables[key]["columns"] if c["name"] == column), "")
+            return f"{column} ({text.rstrip('.')})" if text else column
+
+        issues.append(
+            f"the question says '{phrase}': {', '.join(described(k, c) for k, c in exact)} means exactly that, "
+            f"but the query uses {', '.join(described(k, c) for k, c in partial)}; use the exact one "
+            f"(join its table if needed)"
+        )
+    return sorted(set(issues))
+
+
 def same_name_issues(sql: str, index: LayerIndex, dialect: str) -> list[str]:
     """A grouped or listed column shown without its other names (same_as) from the same table."""
     issues = []
@@ -519,20 +564,14 @@ def unmatched_rows(adapter: SourceAdapter, index: LayerIndex, sql: str, dialect:
     return found
 
 
-_LEAVE_OUT = re.compile(r"\b(?:exclud\w*|without|except|other than|not counting|leav\w* out|non[- ])")
-
-
 def _left_out_terms(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[tuple[dict, bool, bool]]:
-    """Each left-out record type of the queried tables: (term, applied in the query, asked to be left out).
+    """Each test, dummy or internal record type of the queried tables: (term, applied, should be left out).
 
-    A term counts as applied when every value it compares against appears in the query. It is asked
-    to be left out when the question names the term's words and says to leave something out.
+    A term counts as applied when every value it compares against appears in the query. Whether it
+    should be left out comes from the question (see retrieve.leave_out).
     """
     tree = sqlglot.parse_one(sql, read=dialect)
     query_literals = {str(l.this) for l in tree.find_all(exp.Literal) if l.is_string}
-    question = fold(extracted["question"])
-    asked = set(tokens(question))
-    leave_out = bool(_LEAVE_OUT.search(question))
     found = []
     for key in _query_tables(tree, index):
         for term in index.terms.values():
@@ -541,45 +580,45 @@ def _left_out_terms(sql: str, index: LayerIndex, extracted: dict, dialect: str) 
             term_tree = sqlglot.parse_one(f"SELECT 1 FROM t WHERE {term['sql']}", read=dialect)
             needed = {str(l.this) for l in term_tree.find_all(exp.Literal) if l.is_string}
             applied = bool(needed) and needed <= query_literals
-            name = re.sub(r"\(.*?\)", " ", term["term"])  # "test tariffs (via X)" is named by "test tariffs"
-            named = all(any(_match_strength(t, w) for w in asked) for t in tokens(name))
-            found.append((term, applied, leave_out and named))
+            found.append((term, applied, leave_out(term, extracted["question"])))
     return found
 
 
-def left_out_issues(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[str]:
-    """Records left out that the question did not ask to leave out, or kept when it asked to leave them out.
+def left_out_problems(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[str]:
+    """Test, dummy or internal records left out when they should be counted, or counted when they should not.
 
-    The data is answered as it is: test, dummy or internal records count like any others unless the
-    question says to leave them out.
+    This check is firm: the query is not run, and sending it again unchanged does not override it,
+    so every run of the same question treats these records the same way.
     """
-    issues = []
-    for term, applied, asked in _left_out_terms(sql, index, extracted, dialect):
-        if applied and not asked:
-            issues.append(
-                f"the query leaves out '{term['term']}' ({term['definition']}), but the question does not ask to; "
-                f"count them like any other records. Run the same query again if they must be left out"
+    problems = []
+    for term, applied, wanted in _left_out_terms(sql, index, extracted, dialect):
+        if applied and not wanted:
+            problems.append(
+                f"the query leaves out '{term['term']}', but for this question they are counted like any other "
+                f"records; remove that condition"
             )
-        elif asked and not applied:
-            issues.append(
-                f"the question asks to leave out '{term['term']}' ({term['definition']}); add: {term['exclusion_sql']}"
-            )
-    return sorted(set(issues))
+        elif wanted and not applied:
+            problems.append(f"'{term['term']}' must be left out for this question; add: {term['exclusion_sql']}")
+    return sorted(set(problems))
 
 
 def left_out_notes(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[dict[str, str]]:
-    """Plain notes for record types that are usually left out but were counted."""
+    """Plain notes saying which test, dummy or internal record types the answer counts or leaves out."""
     notes, seen = [], set()
     for term, applied, _ in _left_out_terms(sql, index, extracted, dialect):
         name = " ".join(re.sub(r"\(.*?\)", " ", term["term"]).split()).lower()
-        if applied or name in seen:
+        if name in seen:
             continue
         seen.add(name)
+        if applied:
+            plain = f"this leaves out records marked as {name}; ask again including them if they should count"
+        else:
+            plain = (f"this includes records marked as {name}, which are often left out; ask again excluding them "
+                     f"if they should not count")
         notes.append(
             {
-                "plain": f"this includes records marked as {name}, which are often left out; ask again excluding "
-                f"them if they should not count",
-                "technical": f"{term['table']}: left-out term '{term['term']}' not applied ({term['sql']})",
+                "plain": plain,
+                "technical": f"{term['table']}: '{term['term']}' {'left out' if applied else 'counted'} ({term['sql']})",
             }
         )
     return notes
@@ -629,6 +668,8 @@ def run_agent(
             sql = out.get("sql", "").strip().rstrip(";").strip()
             problems = check_query(sql, allowed, adapter.sqlglot_dialect)
             dialect = adapter.sqlglot_dialect
+            if not problems:
+                problems = left_out_problems(sql, index, extracted, dialect)
             soft = (
                 []
                 if problems or sql in warned
@@ -638,7 +679,7 @@ def run_agent(
                 + started_in_issues(sql, index, extracted, dialect)
                 + ranking_issues(sql, extracted, dialect)
                 + same_name_issues(sql, index, dialect)
-                + left_out_issues(sql, index, extracted, dialect)
+                + column_meaning_issues(sql, index, extracted, dialect, [t["table"] for t in pack["tables"]])
             )
             if not problems and sql not in warned:
                 try:  # needs the database: how many records an inner join would silently drop

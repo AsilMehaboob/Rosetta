@@ -491,10 +491,12 @@ export default function Evaluation() {
               disabled={status.running}
             />
           </label>
+          {/* "Today is" picker, hidden for now: runs use REFERENCE_DATE or the real today
           <label className="field" title="What 'today' means for the questions; blank means the real today">
             Today is
             <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} disabled={status.running} />
           </label>
+          */}
           <button type="button" className="primary" onClick={() => run()} disabled={status.running}>
             {status.running ? "Running…" : "Run evaluation"}
           </button>
@@ -549,7 +551,8 @@ export default function Evaluation() {
           </select>
           {summary && (
             <span className="muted">
-              {summary.model} · layer {summary.layer_version} · today = {summary.reference_date} ·{" "}
+              {summary.model} ·{" "}
+              {/* hidden for now: layer {summary.layer_version} · today = {summary.reference_date} · */}
               {summary.runs_per_question} runs per question
             </span>
           )}
