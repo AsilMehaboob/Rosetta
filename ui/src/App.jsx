@@ -2,6 +2,7 @@ import { useState } from "react";
 import { askQuestion } from "./api.js";
 import AnswerCard from "./AnswerCard.jsx";
 import AskForm from "./AskForm.jsx";
+import Evidence from "./Evidence.jsx";
 import ResultTable from "./ResultTable.jsx";
 
 export default function App() {
@@ -33,6 +34,7 @@ export default function App() {
         <>
           <AnswerCard result={result} />
           <ResultTable columns={result.columns} rows={result.rows || []} />
+          <Evidence result={result} />
         </>
       )}
     </main>

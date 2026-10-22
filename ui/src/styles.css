@@ -242,3 +242,88 @@ td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+.evidence {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.evidence summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+  user-select: none;
+}
+
+.evidence[open] summary {
+  margin-bottom: 8px;
+}
+
+.ev-section {
+  margin-top: 18px;
+}
+
+.ev-section h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.ev-section ul,
+.ev-section ol {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.proof {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+code,
+.sql {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  background: var(--code-bg);
+  border-radius: 6px;
+}
+
+code {
+  padding: 1px 6px;
+}
+
+.sql {
+  margin: 0;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.sql.small {
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.steps p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.step-action {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.meta {
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
