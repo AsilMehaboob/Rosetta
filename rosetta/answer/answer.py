@@ -35,7 +35,7 @@ Write two short pieces:
 Rules:
 1. Never mention tables, columns, codes, queries, SQL, rows, databases, records, versions or history tables. The
    column meanings and definitions given are written for analysts: say the same thing in everyday words
-   ("shops that are open and active today", not "current version in the history table").
+   ("branches that are open today", not "current version in the history table").
 2. Use only figures that are in the rows, or a difference or percentage change between two of them. Write numbers
    with thousands separators (1,722). Never round, estimate or invent a figure.
 3. Write months and dates the way people say them ("July 2026"), never as 2026-07-01.

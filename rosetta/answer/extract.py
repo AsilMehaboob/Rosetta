@@ -60,8 +60,8 @@ def extract(llm: JsonLLM, question: str, reference_date: date) -> dict[str, Any]
         kept = []
         for phrase in raw.get(slot, []):
             phrase = phrase.strip()
-            if not phrase or phrase in kept:
-                continue
+            if not phrase or phrase.casefold() in {k.casefold() for k in kept}:
+                continue  # the same phrase again, perhaps in other capitals
             if _occurs(phrase, question):
                 kept.append(phrase)
             else:  # the model added something that is not in the question

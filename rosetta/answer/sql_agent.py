@@ -24,7 +24,7 @@ from rosetta.answer.sqlcheck import check_query
 from rosetta.learn.profile import to_json_value
 from rosetta.llm import JsonLLM
 
-PROMPT_VERSION = "sql-agent-2"
+PROMPT_VERSION = "sql-agent-3"
 
 
 @dataclass(frozen=True)
@@ -71,6 +71,9 @@ Rules:
    for snapshots, "latest_version" for tables of dated versions, "lookup" when the table has one row per key.
 6. The state of something at the moment of an event comes from its history table with "at_time_of_each_row", not from
    a copy of that value stored on the event row.
+6b. What was assigned, started, joined, created, opened, activated or signed up IN a period means versions that
+   BEGAN in that period: use the table's started_in_sql (or the "started_in_period" pattern) with the period's start
+   and end. What someone had, held or was in DURING a period means versions valid at some point in it (overlap).
 7. Snapshot tables repeat every entity once per snapshot date: use one date. Never add up or count across dates.
 8. Count rows (COUNT(*)) when each row is one of the things asked about (an event, a request, an order). Count
    distinct keys (COUNT(DISTINCT key)) when the same thing can appear on several rows (versions, snapshot copies,
@@ -306,6 +309,57 @@ def count_grain_issues(sql: str, index: LayerIndex, extracted: dict, dialect: st
     return sorted(set(issues))
 
 
+_STARTED = re.compile(
+    r"\b(assigned|started|began|joined|created|opened|activated|signed up|enrolled|registered|subscribed|onboarded)\b"
+)
+
+
+def started_in_issues(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[str]:
+    """A question about what began in a period, answered with versions merely valid during it.
+
+    "Accounts assigned to a plan in June" are the versions whose start date is in June. A query
+    that keeps every version overlapping June (start before the end, end after the start) also
+    counts everyone assigned long before. Flags a history table read with its end date but no
+    lower bound on its start date.
+    """
+    words = _STARTED.findall(fold(extracted["question"]))
+    if not words or not any(d["kind"] == "period" for d in extracted["dates"]):
+        return []
+    issues = []
+    tree = sqlglot.parse_one(sql, read=dialect)
+    for scope in traverse_scope(tree):
+        tables = [(alias, src) for alias, src in scope.sources.items() if isinstance(src, exp.Table)]
+        for alias, src in tables:
+            key = _layer_key(index, src)
+            if key is None or index.tables[key]["kind"] != "history":
+                continue
+            grain = [c.upper() for c in (index.tables[key]["grain"] or {}).get("columns", [])]
+            if len(grain) < 2:
+                continue
+            start = grain[1]
+            end_cols = _validity_columns(index, key, dialect) - {start}
+
+            def mine(node) -> bool:
+                return isinstance(node, exp.Column) and (
+                    node.table.upper() == alias.upper() or (not node.table and len(tables) == 1)
+                )
+
+            lower_bound = any(
+                (isinstance(n, (exp.GTE, exp.GT)) and mine(n.left) and n.left.name.upper() == start)
+                or (isinstance(n, (exp.LTE, exp.LT)) and mine(n.right) and n.right.name.upper() == start)
+                or (isinstance(n, exp.Between) and mine(n.this) and n.this.name.upper() == start)
+                for n in scope.expression.find_all(exp.GTE, exp.GT, exp.LTE, exp.LT, exp.Between)
+            )
+            uses_end = any(mine(c) and c.name.upper() in end_cols for c in scope.columns)
+            if uses_end and not lower_bound:
+                issues.append(
+                    f"the question asks what was {words[0]} in a period, but the query keeps every {key} version "
+                    f"valid during it, including ones that began earlier; filter by when it began: "
+                    f"{start} >= period start AND {start} < period end"
+                )
+    return sorted(set(issues))
+
+
 def unmatched_rows(adapter: SourceAdapter, index: LayerIndex, sql: str, dialect: str) -> list[str]:
     """How many rows an inner join into a history table silently leaves out, as notes for the answer."""
     tree = sqlglot.parse_one(sql, read=dialect)
@@ -375,6 +429,7 @@ def run_agent(
                 else version_rule_issues(sql, index, dialect)
                 + value_word_issues(sql, index, extracted, dialect)
                 + count_grain_issues(sql, index, extracted, dialect)
+                + started_in_issues(sql, index, extracted, dialect)
             )
             if problems:
                 observation = {"error": "the query was not run", "problems": problems}
