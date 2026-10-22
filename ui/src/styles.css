@@ -1103,3 +1103,143 @@ th.col-missing {
   padding: 3px 10px;
   font-size: 12px;
 }
+
+/* why a run got its colour */
+
+.diagnosis {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--muted);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.diagnosis.good {
+  border-left-color: var(--good);
+}
+
+.diagnosis.warn {
+  border-left-color: var(--warn);
+}
+
+.diagnosis.bad {
+  border-left-color: var(--bad);
+}
+
+.diagnosis-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.diagnosis-head .badge {
+  margin: 0;
+}
+
+.diagnosis ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.diagnosis li + li {
+  margin-top: 2px;
+}
+
+.diffs {
+  margin-top: 14px;
+}
+
+.diffs .table-wrap {
+  max-height: 260px;
+}
+
+td.neg {
+  color: var(--bad);
+}
+
+td.pos {
+  color: var(--warn);
+}
+
+.compare-head {
+  margin-top: 18px;
+}
+
+.section-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.col-missing-swatch {
+  margin-left: 14px;
+  color: var(--warn);
+  font-weight: 500;
+}
+
+.run-tab-verdict {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.run-tabs button.on .run-tab-verdict {
+  color: var(--text);
+}
+
+.run-tabs {
+  flex-wrap: wrap;
+}
+
+/* the main table: why a question is amber or red, and what the colours mean */
+
+.q-why {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.q-why.warn {
+  color: var(--warn);
+}
+
+.q-why.bad {
+  color: var(--bad);
+}
+
+.table-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.table-foot .key {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* the title and controls stay in view while scrolling */
+
+.eval-head {
+  position: sticky;
+  top: -8px; /* covers the page's top padding too, so nothing shows above it */
+  z-index: 2;
+  padding: 18px 0 14px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}

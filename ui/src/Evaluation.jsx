@@ -200,7 +200,7 @@ function differences(record, expected) {
     },
     ref: {
       columnClass: (j) => (refPair.has(j) ? "" : "col-missing"),
-      cellClass: (i, j) => off(ref.rows[i][j], refPair.has(j) ? refSets.get(j) : gotAll),
+      cellClass: (i, j) => (refPair.has(j) ? off(ref.rows[i][j], refSets.get(j)) : ""),
     },
   };
 }
@@ -250,10 +250,76 @@ function Pane({ title, meta, sql, columns, rows, rowCount, marks, children }) {
   );
 }
 
+const num = (x) =>
+  typeof x === "number" ? x.toLocaleString(undefined, { maximumFractionDigits: 4 }) : x === null || x === undefined ? "—" : String(x);
+
+// Why a run got its colour: a headline and a few plain facts, worked out from the rows.
+function Diagnosis({ record }) {
+  const { text, tone } = verdict(record.verdict);
+  const d = record.diagnosis || { headline: record.reason, points: [] };
+  return (
+    <section className={`diagnosis ${tone}`}>
+      <div className="diagnosis-head">
+        <span className={`badge ${tone}`}>{text}</span>
+        <strong>{d.headline}</strong>
+      </div>
+      {d.points?.length > 0 && (
+        <ul>
+          {d.points.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// Only the rows whose figures differ, biggest difference first.
+function Differences({ rows }) {
+  if (!rows?.length) return null;
+  return (
+    <section className="results diffs">
+      <div className="results-head">
+        <span>Rows that differ</span>
+        <span className="muted">
+          {rows.length} {rows.length === 1 ? "row" : "rows"}
+        </span>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Row</th>
+              <th>Figure</th>
+              <th className="num">Rosetta</th>
+              <th className="num">Reference</th>
+              <th className="num">Difference</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.flatMap((r) =>
+              r.cells.map((c, i) => (
+                <tr key={`${r.key}-${c.column}`}>
+                  <td>{i === 0 ? r.key : ""}</td>
+                  <td className="muted">{c.column}</td>
+                  <td className="num">{num(c.rosetta)}</td>
+                  <td className="num">{num(c.reference)}</td>
+                  <td className={`num ${c.difference < 0 ? "neg" : c.difference > 0 ? "pos" : ""}`}>
+                    {c.difference === null ? "—" : `${c.difference > 0 ? "+" : ""}${num(c.difference)}`}
+                  </td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function QuestionDetail({ item, runs, expected }) {
   const [shown, setShown] = useState(runs[0]?.run);
   const record = runs.find((r) => r.run === shown) || runs[0];
-  const v = record && verdict(record.verdict);
   const diff = record?.columns?.length && expected ? differences(record, expected) : null;
   return (
     <div className="q-detail">
@@ -265,24 +331,23 @@ function QuestionDetail({ item, runs, expected }) {
           <button key={r.run} type="button" className={r.run === record?.run ? "on" : ""} onClick={() => setShown(r.run)}>
             <span className={`vdot ${verdict(r.verdict).tone}`} />
             Run {r.run}
+            <span className="run-tab-verdict">{verdict(r.verdict).text}</span>
           </button>
         ))}
       </div>
 
-      {record && (
-        <p className="run-verdict">
-          <span className={`badge ${v.tone}`}>{v.text}</span>
-          {record.reason && <span className="muted"> {record.reason}</span>}
-        </p>
-      )}
+      {record && <Diagnosis record={record} />}
+      {record && <Differences rows={record.diagnosis?.differences} />}
 
       {diff && (
-        <>
+        <div className="compare-head">
+          <span className="section-label">Columns</span>
           <Pairing diff={diff} />
           <p className="muted small legend">
-            <span className="cell-off swatch" /> value not found in the other result
+            <span className="cell-off swatch" /> value not in the other result
+            <span className="col-missing-swatch">Amber header</span> column the other result does not have
           </p>
-        </>
+        </div>
       )}
 
       <div className="compare">
@@ -517,7 +582,20 @@ export default function Evaluation() {
                     <tr className="q-row" onClick={() => setOpen(open === p.id ? null : p.id)}>
                       <td>{p.id}</td>
                       <td className="muted">{p.level}</td>
-                      <td className="q-text">{p.question}</td>
+                      <td className="q-text">
+                        {p.question}
+                        {(() => {
+                          const worst = detail?.runs.find(
+                            (r) => r.question_id === p.id && verdict(r.verdict).tone !== "good",
+                          );
+                          if (!worst) return null;
+                          return (
+                            <span className={`q-why ${verdict(worst.verdict).tone}`}>
+                              {worst.diagnosis?.headline || worst.reason}
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td>
                         {p.verdicts.map((v, i) => (
                           <Dot key={i} v={v} run={i + 1} />
@@ -559,7 +637,18 @@ export default function Evaluation() {
               </tbody>
             </table>
           </div>
-          <p className="fine">Click a question to see each run's verdict, query and rows next to the expected answer.</p>
+          <div className="table-foot">
+            <span className="key">
+              <span className="vdot good" /> correct
+            </span>
+            <span className="key">
+              <span className="vdot warn" /> right data, a column missing
+            </span>
+            <span className="key">
+              <span className="vdot bad" /> different data, wrong refusal or error
+            </span>
+            <span className="muted">Click a question for the explanation, the differing rows and both queries.</span>
+          </div>
         </>
       )}
     </main>

@@ -146,7 +146,13 @@ def compare(expected_columns: list[str], expected_rows: list[list], columns: lis
             notes.append("added " + ", ".join(extra))
         verdict = "match_extra_columns" if extra else "match"
         return {"verdict": verdict, "reason": "; ".join(notes) or "same data", **detail}
-    if best:
+    # Rosetta's unpaired figures are its own different numbers, not a column it chose not to show
+    own_figures = [
+        columns[k] for k in range(len(columns))
+        if k not in best.values() and all(isinstance(r[k], float) or r[k] is None for r in got)
+        and any(isinstance(r[k], float) for r in got)
+    ]
+    if best and not own_figures:
         return {"verdict": "partial", "reason": "right rows, but no column holds " + ", ".join(missing_info), **detail}
 
     reasons = []
@@ -162,6 +168,216 @@ def compare(expected_columns: list[str], expected_rows: list[list], columns: lis
         if all(isinstance(r[k], float) for r in got)
     ]
     return {"verdict": "mismatch", "reason": "; ".join(reasons + totals), **detail}
+
+
+# ---------------------------------------------------------------------------
+# explaining a verdict: what exactly differs, in plain words
+
+MAX_DIFF_ROWS = 50  # differing rows listed per run
+MAX_EXAMPLES = 3  # differing rows quoted in the explanation
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, float)
+
+
+def _shown(value: Any) -> str:
+    if value is None:
+        return "empty"
+    if isinstance(value, float):
+        return f"{int(value):,}" if value.is_integer() else f"{value:,.4g}"
+    return str(value)
+
+
+def _number_columns(rows: list[list], width: int) -> set[int]:
+    return {j for j in range(width) if rows and all(_is_number(r[j]) or r[j] is None for r in rows)
+            and any(_is_number(r[j]) for r in rows)}
+
+
+def _key_pairs(want: list[list], got: list[list], w_keys: list[int], g_keys: list[int], paired: dict[int, int]) -> dict[int, int]:
+    """Each expected label column with the result column sharing most of its values."""
+    pairs = {j: k for j, k in paired.items() if j in w_keys}
+    for j in w_keys:
+        if j in pairs:
+            continue
+        values = {r[j] for r in want}
+        best, best_share = None, 0.5
+        for k in g_keys:
+            if k in pairs.values():
+                continue
+            share = len(values & {r[k] for r in got}) / max(len(values), 1)
+            if share > best_share:
+                best, best_share = k, share
+        if best is not None:
+            pairs[j] = best
+    return pairs
+
+
+def diagnose(
+    expected_columns: list[str], expected_rows: list[list], columns: list[str], rows: list[list], verdict: dict
+) -> dict:
+    """A headline, a few plain facts, and the rows whose figures differ, for one run.
+
+    Rows are lined up on their label columns (names, codes, dates); figures are then compared row by
+    row, so the explanation can say which rows are missing or extra and which figures differ, by how
+    much, and whether they differ in a pattern (always lower, always a whole multiple).
+    """
+    v = verdict["verdict"]
+    if v == "correct_refusal":
+        return {"headline": "Correctly said the data cannot answer this", "points": [verdict.get("reason", "")]}
+    if v in ("wrong_refusal", "failed", "error", "answered_unanswerable"):
+        headline = {
+            "wrong_refusal": "Said the data cannot answer, but the reference query answers it",
+            "failed": "No working query was found",
+            "error": "The run stopped with an error",
+            "answered_unanswerable": "Gave an answer although the data cannot support one",
+        }[v]
+        return {"headline": headline, "points": [p for p in [verdict.get("reason", "")] if p]}
+
+    want = [[normalise(x) for x in r] for r in expected_rows]
+    got = [[normalise(x) for x in r] for r in rows]
+    e_index = {c: j for j, c in enumerate(expected_columns)}
+    g_index = {c: k for k, c in enumerate(columns)}
+    paired = {
+        e_index[e]: g_index[g]
+        for e, g in (verdict.get("paired_columns") or {}).items()
+        if e in e_index and g in g_index
+    }
+    missing_cols = [expected_columns[j] for j in range(len(expected_columns)) if j not in paired]
+    extra_cols = list(verdict.get("extra_columns") or [c for k, c in enumerate(columns) if k not in paired.values()])
+    points: list[str] = []
+
+    if v in ("match", "match_extra_columns"):
+        headline = f"Same data as the reference ({len(got):,} row{'s' if len(got) != 1 else ''})"
+        if extra_cols:
+            points.append("Rosetta also showed " + ", ".join(extra_cols) + "; the figures do not change")
+        if missing_cols:
+            points.append("The reference repeats a fixed value in " + ", ".join(missing_cols) + "; Rosetta left it out")
+        return {"headline": headline, "points": points}
+
+    w_nums = _number_columns(want, len(expected_columns))
+    g_nums = _number_columns(got, len(columns))
+    w_keys = [j for j in range(len(expected_columns)) if j not in w_nums]
+    g_keys = [k for k in range(len(columns)) if k not in g_nums]
+    keys = _key_pairs(want, got, w_keys, g_keys, paired)
+    key_label = " / ".join(expected_columns[j] for j in keys) or "row"
+
+    def key_of(row: list, side: str) -> tuple:
+        return tuple(row[j] if side == "w" else row[keys[j]] for j in keys)
+
+    w_by = {key_of(r, "w"): r for r in want}
+    g_by = {key_of(r, "g"): r for r in got}
+    lined_up = len(w_by) == len(want) and len(g_by) == len(got) and keys
+
+    if not lined_up:
+        if len(got) != len(want):
+            points.append(verdict.get("reason", ""))
+            return {"headline": f"Rosetta returned {len(got):,} rows, the reference {len(want):,}",
+                    "points": [p for p in points if p]}
+        # same number of rows, but the labels are written differently: show both versions
+        figures_ok = all(j in paired for j in w_nums)
+        for j in w_keys:
+            if j in keys:
+                continue
+            others = [k for k in g_keys if k not in keys.values()]
+            sample = want[0][j]
+            points.append(
+                f"The reference labels rows by {expected_columns[j]} (for example “{_shown(sample)}”); "
+                + (f"Rosetta by {', '.join(columns[k] for k in others)} (for example “{_shown(got[0][others[0]])}”)"
+                   if others else "Rosetta has no such label")
+            )
+        if figures_ok and w_nums:
+            points.append("The figures match row for row: " + ", ".join(
+                f"{expected_columns[j]} ↔ {columns[paired[j]]}" for j in sorted(w_nums)))
+        headline = (
+            f"Same {len(got):,} rows and figures; the labels are written differently" if figures_ok
+            else f"Same number of rows ({len(got):,}), but they could not be lined up with the reference"
+        )
+        return {"headline": headline, "points": [p for p in points if p]}
+
+    missing = [k for k in w_by if k not in g_by]
+    extra = [k for k in g_by if k not in w_by]
+    both = [k for k in w_by if k in g_by]
+    label = lambda k: " / ".join(_shown(x) for x in k)  # noqa: E731
+
+    # figures: each expected figure with the result figure that agrees on most shared rows
+    def cost(j: int, k: int) -> tuple:
+        agree = sum(w_by[x][j] == g_by[x][k] for x in both)
+        gap = sum(abs((g_by[x][k] or 0) - (w_by[x][j] or 0)) / (abs(w_by[x][j] or 0) + 1) for x in both)
+        return (-agree, gap)
+
+    measures = [(j, paired[j]) for j in sorted(w_nums) if j in paired]
+    free_w = [j for j in sorted(w_nums) if j not in paired]
+    free_g = [k for k in sorted(g_nums) if k not in paired.values()]
+    for _, j, k in sorted((cost(j, k), j, k) for j in free_w for k in free_g):
+        if j in {m[0] for m in measures} or k in {m[1] for m in measures}:
+            continue
+        measures.append((j, k))
+    measures.sort()
+
+    diff_rows = []
+    for x in both:
+        cells = []
+        for j, k in measures:
+            a, b = g_by[x][k], w_by[x][j]
+            if a != b:
+                cells.append({"column": expected_columns[j], "rosetta": a, "reference": b,
+                              "difference": (a - b) if _is_number(a) and _is_number(b) else None})
+        if cells:
+            diff_rows.append({"key": label(x), "cells": cells})
+    diff_rows.sort(key=lambda r: -max(abs(c["difference"] or 0) for c in r["cells"]))
+
+    if missing or extra:
+        headline = f"Rosetta returned {len(got):,} rows, the reference {len(want):,}"
+        if missing:
+            shown = ", ".join(label(k) for k in missing[:5]) + (f" and {len(missing) - 5} more" if len(missing) > 5 else "")
+            points.append(f"Missing from Rosetta ({len(missing)}): {shown}")
+        if extra:
+            shown = ", ".join(label(k) for k in extra[:5]) + (f" and {len(extra) - 5} more" if len(extra) > 5 else "")
+            points.append(f"Only in Rosetta ({len(extra)}): {shown}")
+        if both:
+            points.append(
+                f"The {len(both):,} rows found on both sides agree" if not diff_rows
+                else f"{len(diff_rows):,} of the {len(both):,} rows found on both sides have different figures"
+            )
+    elif diff_rows:
+        changed = sorted({c["column"] for r in diff_rows for c in r["cells"]})
+        verb = "differs" if len(changed) == 1 else "differ"
+        headline = f"Same {len(both):,} {key_label} values; {', '.join(changed)} {verb} on {len(diff_rows):,} of them"
+    elif v == "partial":
+        headline = "Every row and every column Rosetta returned matches the reference"
+        if missing_cols:
+            points.append("The reference also returns " + ", ".join(missing_cols) + ", which Rosetta did not show")
+    else:
+        headline = "Same rows; the figures could not be paired with the reference"
+        points.append(verdict.get("reason", ""))
+
+    for r in diff_rows[:MAX_EXAMPLES]:
+        c = r["cells"][0]
+        points.append(f"{r['key']}: Rosetta {_shown(c['rosetta'])}, reference {_shown(c['reference'])}")
+    for j, k in measures:
+        total_g = sum(r[k] for r in got if _is_number(r[k]))
+        total_w = sum(r[j] for r in want if _is_number(r[j]))
+        has_gaps = any(r[j] is None for r in want) or any(r[k] is None for r in got)
+        if not has_gaps and total_g != total_w and any(c["column"] == expected_columns[j] for r in diff_rows for c in r["cells"]):
+            points.append(
+                f"Total {expected_columns[j]}: Rosetta {_shown(total_g)}, reference {_shown(total_w)} "
+                f"({'+' if total_g > total_w else '−'}{_shown(abs(total_g - total_w))})"
+            )
+    cells = [c for r in diff_rows for c in r["cells"] if c["difference"] is not None]
+    if len(cells) >= 2:
+        if all(c["rosetta"] and c["reference"] / c["rosetta"] >= 2 and (c["reference"] / c["rosetta"]).is_integer() for c in cells):
+            points.append("On every differing row the reference is a whole multiple (2×, 3×…) of Rosetta's figure, "
+                          "a sign that the reference counts some rows more than once")
+        elif all(c["difference"] < 0 for c in cells):
+            points.append("Rosetta's figure is lower on every differing row: it left out something the reference counts")
+        elif all(c["difference"] > 0 for c in cells):
+            points.append("Rosetta's figure is higher on every differing row: it counts something the reference leaves out")
+    used = set(keys) | {j for j, _ in measures}
+    unused = [c for c in missing_cols if e_index[c] not in used]
+    if unused and v != "partial":
+        points.append("No Rosetta column holds the reference's " + ", ".join(unused))
+    return {"headline": headline, "points": [p for p in points if p], "differences": diff_rows[:MAX_DIFF_ROWS]}
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +500,8 @@ def run_benchmark(
                                   "seconds": round(time.perf_counter() - t0, 2)}
                     verdict = score(q, result, expected.get(q["id"]))
                     columns, rows = result.get("columns") or [], result.get("rows") or []
+                    e = expected.get(q["id"]) or {"columns": [], "rows": []}
+                    verdict["diagnosis"] = diagnose(e["columns"], e["rows"], columns, rows, verdict)
                     record = {
                         "question_id": q["id"],
                         "run": run,
@@ -476,6 +694,13 @@ def read_result(run_id: str) -> dict | None:
         records = [json.loads(line) for line in f if line.strip()]
     expected_path = folder / "expected.json"
     expected = json.loads(expected_path.read_text(encoding="utf-8")) if expected_path.exists() else {}
+    for r in records:  # evaluations saved before diagnoses existed get one from their saved rows
+        if "diagnosis" not in r:
+            e = expected.get(r["question_id"]) or {"columns": [], "rows": []}
+            try:
+                r["diagnosis"] = diagnose(e["columns"], e["rows"], r.get("columns") or [], r.get("rows") or [], r)
+            except Exception:
+                r["diagnosis"] = {"headline": r.get("reason", ""), "points": []}
     return {"summary": summary, "runs": records, "expected": expected}
 
 
