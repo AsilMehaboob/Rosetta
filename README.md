@@ -44,50 +44,7 @@ Rosetta is not told what any table or column means. It works that out from the d
 
 ## Architecture
 
-```
-                 Source database (read-only)
-                            │
-   LEARN ───────────────────┼──────────────────────────────────────────
-   (once, and again         ▼
-    when data changes)   Profile    (code)  scan each table: values, nulls, ranges
-                            │
-                            ▼
-                         Detect     (code)  history & snapshot tables, "never ends"
-                            │               dates, links between tables
-                            ▼
-                         Annotate   (LLM)   names, value meanings, business terms
-                            │
-                            ▼
-                         Assemble   (code)  test every term on the data, publish
-                            │
-                            ▼
-                   ┌──────────────────┐
-                   │  Semantic layer  │     versioned; semantic/semantic_layer.yaml
-                   └────────┬─────────┘
-   ANSWER ──────────────────┼──────────────────────────────────────────
-   (every question)         │
-        question ──▶  Converse   (LLM)    only after earlier questions: a follow-up
-                            │             becomes one complete question
-                            ▼
-                      Extract    (LLM)    phrases, values, dates read by code
-                            │
-                            ▼
-                      Retrieve   (code)   tables, columns, terms, joins from the layer
-                            │
-                            ▼
-                      SQL agent  (LLM)    writes one query; code checks it; runs it
-                            │             on the source database (read-only)
-                            ▼
-                      Answer     (LLM)    plain-language answer; every number checked
-                            │
-                            ▼
-                      Chart      (code)   a chart only when it helps
-                            │
-   SERVED BY ───────────────┼──────────────────────────────────────────
-                            ▼
-          FastAPI ◀──▶ Web UI (chat + evaluation)
-          Evaluation harness: runs the same pipeline on the benchmark, compares data
-```
+![Rosetta architecture: Learn builds a tested semantic layer; each question goes through Converse (follow-ups only), Extract, Retrieve, SQL agent, Answer and Chart](docs/architecture.png)
 
 In short: **Learn** turns the raw tables into a tested semantic layer. **Answer** turns each question into one
 checked query and an explained result, using only that layer. The **API** serves it to the web UI, and the
