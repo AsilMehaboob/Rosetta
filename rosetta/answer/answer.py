@@ -17,7 +17,7 @@ from typing import Any
 
 from rosetta.llm import JsonLLM
 
-PROMPT_VERSION = "answer-6"
+PROMPT_VERSION = "answer-7"
 SUMMARY_ROWS = 50  # rows shown to the model; the full result is always returned
 
 SCHEMA = {
@@ -41,6 +41,8 @@ Rules:
 3. Write months and dates the way people say them ("July 2026"), never as 2026-07-01.
 4. When there are more than five results, do not list them: say how many there are, mention the full list is
    attached, and point out a pattern only if a figure for it is in the rows.
+4b. When the question asks which one is highest or lowest, name the first result and its figure, then the next one
+   for comparison; say so if they are tied.
 5. Some values are shown as [hidden]: never write [hidden] and never talk about hidden or personal details at all.
 6. If there are no rows, say that nothing matching was found for that period or condition.
 6b. Name what was counted with the question's own business words (if it asks about "returns", say "returns"); never

@@ -24,7 +24,7 @@ from rosetta.answer.sqlcheck import check_query
 from rosetta.learn.profile import to_json_value
 from rosetta.llm import JsonLLM
 
-PROMPT_VERSION = "sql-agent-5"
+PROMPT_VERSION = "sql-agent-6"
 
 
 @dataclass(frozen=True)
@@ -90,6 +90,10 @@ Rules:
 10b. When the question splits a group into categories that come from a joined table ("how many have A and how many
    have B"), write LEFT JOIN with the same ON conditions, so records with no match stay in as their own group (an
    empty category) instead of silently disappearing.
+10c. When the question asks which one is highest, lowest, most, fewest, largest, smallest, top or bottom, return
+   every group with its figure, sorted so the asked-for extreme comes first (descending for highest/most, ascending
+   for lowest/fewest). Do not cut the result to one row (no ROWNUM, FETCH FIRST, LIMIT or rank filter) unless the
+   question asks for a number of them ("top 3"): the full ranking is the evidence and shows ties.
 {dialect_rules}"""
 
 
@@ -327,6 +331,70 @@ _STARTED = re.compile(
 )
 
 
+_HIGH = r"highest|most|largest|biggest|greatest|maximum|top"
+_LOW = r"lowest|fewest|least|smallest|minimum|bottom"
+_RANKED = re.compile(rf"\b(?<!at )({_HIGH}|{_LOW}|best|worst)\b")
+_HOW_MANY = re.compile(
+    rf"\b(?:(?:top|bottom|first|last)\s+(?:\d+|two|three|four|five|six|seven|eight|nine|ten)"
+    rf"|(?:\d+|two|three|four|five|six|seven|eight|nine|ten)\s+(?:{_HIGH}|{_LOW}|best|worst))\b"
+)
+
+
+def ranking_issues(sql: str, extracted: dict, dialect: str) -> list[str]:
+    """A "which one is highest/lowest" question answered with only the winner, without its figure, or unsorted.
+
+    The ranking of every group, with the figure it is ranked by, is the evidence for the answer
+    and shows ties; cutting it to one row hides both. A question that asks for a number of
+    items ("top 3") may cut, and a question with no groups (a single highest value) is left alone.
+    """
+    question = fold(extracted["question"])
+    found = _RANKED.findall(question)
+    if not found or _HOW_MANY.search(question):
+        return []
+    tree = sqlglot.parse_one(sql, read=dialect)
+    if not tree.find(exp.Group):
+        return []
+    issues = []
+    if (
+        tree.find(exp.Limit, exp.Fetch)
+        or any(c.name.upper() == "ROWNUM" for c in tree.find_all(exp.Column))
+        or any(
+            isinstance(side, exp.Subquery) and side.find(exp.Max, exp.Min)
+            for eq in tree.find_all(exp.EQ)
+            for side in (eq.left, eq.right)
+        )
+        or any(w.this.key in ("rownumber", "rank", "denserank") for w in tree.find_all(exp.Window))
+    ):
+        issues.append(
+            "the question asks which one is highest or lowest, but the query keeps only the top row; return every "
+            "group with its figure, sorted, so the ranking and any ties are visible"
+        )
+    outer = tree if isinstance(tree, exp.Select) else tree.find(exp.Select)
+    figures = {
+        p.alias.upper()
+        for select in tree.find_all(exp.Select)
+        for p in select.expressions
+        if isinstance(p, exp.Alias) and p.this.find(exp.AggFunc)
+    }
+    if outer is not None and not any(
+        p.find(exp.AggFunc) or p.alias_or_name.upper() in figures for p in outer.expressions
+    ):
+        issues.append("return the figure each group is ranked by, not only the group's name")
+    order = outer.args.get("order") if outer is not None else None
+    if order is None or not order.expressions:
+        issues.append("sort the rows so the asked-for extreme comes first")
+    else:
+        first = order.expressions[0]
+        descending = bool(first.args.get("desc"))
+        high = any(re.fullmatch(_HIGH, w) for w in found)
+        low = any(re.fullmatch(_LOW, w) for w in found)
+        if high and not low and not descending:
+            issues.append("the question asks for the highest, so sort by the figure in descending order")
+        elif low and not high and descending:
+            issues.append("the question asks for the lowest, so sort by the figure in ascending order")
+    return issues
+
+
 def started_in_issues(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[str]:
     """A question about what began in a period, answered with versions merely valid during it.
 
@@ -497,6 +565,7 @@ def run_agent(
                 + value_word_issues(sql, index, extracted, dialect)
                 + count_grain_issues(sql, index, extracted, dialect)
                 + started_in_issues(sql, index, extracted, dialect)
+                + ranking_issues(sql, extracted, dialect)
                 + left_out_issues(sql, index, extracted, dialect)
             )
             if not problems and sql not in warned:
