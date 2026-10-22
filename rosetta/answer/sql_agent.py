@@ -9,17 +9,22 @@ always come from the database, never from the model's text.
 """
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+import sqlglot
+from sqlglot import exp
+from sqlglot.optimizer.scope import traverse_scope
+
 from rosetta.adapters.base import SourceAdapter
-from rosetta.answer.retrieve import LayerIndex, tokens
+from rosetta.answer.retrieve import LayerIndex, _match_strength, _stem, fold, tokens
 from rosetta.answer.sqlcheck import check_query
 from rosetta.learn.profile import to_json_value
 from rosetta.llm import JsonLLM
 
-PROMPT_VERSION = "sql-agent-1"
+PROMPT_VERSION = "sql-agent-2"
 
 
 @dataclass(frozen=True)
@@ -58,17 +63,20 @@ Rules:
 1. Use only tables and columns from the context or from your searches. Never invent names or values.
 2. When a verified term matches words of the question, use its SQL as written.
 3. Copy stored values exactly as given in "values" or seen with get_column_values (case, accents, spaces).
-4. History tables keep versions. For the present, add the table's current_sql. For a past date, use its as_of_sql
-   with {{as_of}} replaced by that date. For the state at the time of an event, join the history table on the entity
-   and put the event's date column in place of {{as_of}}.
-5. Snapshot tables repeat every entity once per snapshot date. For the present use the latest date; for a past
-   date use that date. Never add up or count across several snapshot dates.
-6. When asked how many of something, count distinct entities (COUNT(DISTINCT key)), not rows, unless each row is
-   one of the things counted.
-7. A date period from "dates" is start <= column < end, with the date literals exactly as given.
-8. Join only along the joins given; when joining into a history or snapshot table, keep one row per key
-   (its current, as-of or snapshot rule), or rows multiply.
-9. Select only what the question asks for, with readable aliases; order the rows sensibly.
+4. History tables keep versions. When the history table is the one you read from, add its current_sql for the
+   present, or its as_of_sql with {{as_of}} replaced by a date literal for a past date.
+5. To join, copy one of that join's "patterns" (s = the table you join from, j = the table you join into; rename the
+   aliases to yours): "now" for the present, "as_of_date" for a given date, "at_time_of_each_row" for the state at the
+   moment of each row of the other table (replace s.{{event_date}} with that row's date column), "latest" or "on_date"
+   for snapshots, "latest_version" for tables of dated versions, "lookup" when the table has one row per key.
+6. The state of something at the moment of an event comes from its history table with "at_time_of_each_row", not from
+   a copy of that value stored on the event row.
+7. Snapshot tables repeat every entity once per snapshot date: use one date. Never add up or count across dates.
+8. Count rows (COUNT(*)) when each row is one of the things asked about (an event, a request, an order). Count
+   distinct keys (COUNT(DISTINCT key)) when the same thing can appear on several rows (versions, snapshot copies,
+   or rows multiplied by a join), and when asked how many entities (customers, patients, accounts) there are.
+9. A date period from "dates" is start <= column < end, with the date literals exactly as given.
+10. Join only along the joins given. Select only what the question asks for, with readable aliases; order the rows.
 {dialect_rules}"""
 
 
@@ -169,6 +177,165 @@ def column_values(adapter: SourceAdapter, index: LayerIndex, table: str, column:
     return {"table": key, "column": col["name"], "values": [[to_json_value(v), int(n)] for v, n in rows]}
 
 
+def _layer_key(index: LayerIndex, table: exp.Table) -> str | None:
+    name = f"{table.db}.{table.name}".upper() if table.db else table.name.upper()
+    return next((k for k in index.tables if k.upper() == name or k.split(".")[1] == name), None)
+
+
+def _validity_columns(index: LayerIndex, key: str, dialect: str) -> set[str]:
+    """Columns that pick one row per key: a history table's start and end, a snapshot's or version's date."""
+    t = index.tables[key]
+    grain = [c.upper() for c in (t["grain"] or {}).get("columns", [])]
+    if t["kind"] == "history":
+        cols = set(grain[1:])
+        if t["current_sql"]:
+            rule = sqlglot.parse_one(f"SELECT 1 FROM t WHERE {t['current_sql']}", read=dialect)
+            cols |= {c.name.upper() for c in rule.find_all(exp.Column)}
+        return cols
+    if t["kind"] in ("snapshot", "entity_by_date"):
+        return set(grain[-1:])
+    return set()
+
+
+def version_rule_issues(sql: str, index: LayerIndex, dialect: str) -> list[str]:
+    """Tables with several rows per key that the query reads without the rule picking one row per key.
+
+    A history or snapshot table must use its validity or date column wherever it is read; a table of
+    dated versions only when it is joined into (as the main table its rows may be the events counted).
+    """
+    issues = []
+    tree = sqlglot.parse_one(sql, read=dialect)
+    for scope in traverse_scope(tree):
+        tables = [(alias, src) for alias, src in scope.sources.items() if isinstance(src, exp.Table)]
+        main = scope.expression.args.get("from_") if isinstance(scope.expression, exp.Select) else None
+        main_alias = main.this.alias_or_name.upper() if main and isinstance(main.this, exp.Table) else None
+        for alias, src in tables:
+            key = _layer_key(index, src)
+            if key is None:
+                continue
+            kind = index.tables[key]["kind"]
+            if kind not in ("history", "snapshot", "entity_by_date"):
+                continue
+            if kind == "entity_by_date" and alias.upper() == main_alias:
+                continue
+            need = _validity_columns(index, key, dialect)
+            used = {
+                c.name.upper()
+                for c in scope.columns
+                if c.table.upper() == alias.upper() or (not c.table and len(tables) == 1)
+            }
+            if need and not used & need:
+                issues.append(
+                    f"{key} is a {kind} table with several rows per key, read without a rule that keeps one "
+                    f"(none of {sorted(need)} is used): rows of every version or copy are counted"
+                )
+    return sorted(set(issues))
+
+
+def _query_tables(tree: exp.Expression, index: LayerIndex) -> list[str]:
+    return sorted({k for t in tree.find_all(exp.Table) if (k := _layer_key(index, t))})
+
+
+def value_word_issues(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[str]:
+    """Words of the question that are exactly a stored value of a code column the query reads, but unused.
+
+    "overdue" in a question, OVERDUE among the values of a status column: a query that never
+    filters on OVERDUE answers a different question. A word is satisfied when any of the
+    values it matches appears in the query.
+    """
+    tree = sqlglot.parse_one(sql, read=dialect)
+    literals = {fold(str(l.this)).strip() for l in tree.find_all(exp.Literal) if l.is_string}
+    values: dict[str, list[tuple[str, str, str]]] = {}  # folded value -> (table, column, value)
+    for key in _query_tables(tree, index):
+        for c in index.tables[key]["columns"]:
+            if c.get("shape") not in ("code", "flag") or c.get("sensitive"):
+                continue
+            for v in c.get("values") or []:
+                if isinstance(v, str):
+                    values.setdefault(fold(v).strip(), []).append((key, c["name"], v))
+    phrases = [p for slot in ("subjects", "conditions", "values") for p in extracted.get(slot, [])]
+    issues = []
+    for word in sorted({w for p in phrases for w in re.findall(r"[^\W_]+", fold(p)) if len(w) >= 3}):
+        hits = [h for form in {word, _stem(word), word + "s"} for h in values.get(form, [])]
+        if hits and not any(fold(v).strip() in literals for _, _, v in hits):
+            where = "; ".join(sorted({f"{t}.{c} holds '{v}'" for t, c, v in hits}))
+            issues.append(f"the question says '{word}', which is a stored value ({where}), but the query never uses it")
+    return issues
+
+
+_COUNTED = re.compile(r"\b(?:how many|number of|count(?: of)?|total(?: number of)?)\s+(?:the\s+|all\s+|unique\s+|distinct\s+)?([^\W\d_]+)")
+
+
+def count_grain_issues(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[str]:
+    """COUNT(DISTINCT id) over a table where each row is one event, when the question counts the events.
+
+    A dated-events table (one row per entity per date) records one thing per row; an id on
+    it can repeat. Counting distinct ids then counts entities, not the events asked about.
+    It stays quiet when the question counts things the id stands for ("how many customers").
+    """
+    if extracted.get("output") != "count":
+        return []
+    counted = [m.group(1) for m in _COUNTED.finditer(fold(extracted["question"]))]
+    issues = []
+    tree = sqlglot.parse_one(sql, read=dialect)
+    for scope in traverse_scope(tree):
+        if not isinstance(scope.expression, exp.Select):
+            continue
+        main = scope.expression.args.get("from_")
+        if not main or not isinstance(main.this, exp.Table):
+            continue
+        key = _layer_key(index, main.this)
+        if key is None or index.tables[key]["kind"] != "entity_by_date":
+            continue
+        alias = main.this.alias_or_name.upper()
+        single = len([s for s in scope.sources.values() if isinstance(s, exp.Table)]) == 1
+        for count in scope.expression.find_all(exp.Count):
+            if not isinstance(count.this, exp.Distinct) or count.find_ancestor(exp.Select) is not scope.expression:
+                continue
+            for col in count.this.find_all(exp.Column):
+                if col.table.upper() != alias and not (single and not col.table):
+                    continue
+                id_words = tokens(col.name)
+                if any(_match_strength(t, w) for w in counted for t in id_words):
+                    continue  # the question counts what this id stands for
+                issues.append(
+                    f"COUNT(DISTINCT {col.name}) counts distinct {col.name} values, but each row of {key} is one "
+                    f"event and a {col.name} can have several; the question counts "
+                    f"{', '.join(repr(w) for w in counted) or 'the events'}, so count rows (COUNT(*))"
+                )
+    return sorted(set(issues))
+
+
+def unmatched_rows(adapter: SourceAdapter, index: LayerIndex, sql: str, dialect: str) -> list[str]:
+    """How many rows an inner join into a history table silently leaves out, as notes for the answer."""
+    tree = sqlglot.parse_one(sql, read=dialect)
+    if not isinstance(tree, exp.Select) or tree.args.get("with"):
+        return []
+    notes = []
+    joins = tree.args.get("joins") or []
+    for i, join in enumerate(joins):
+        if join.side or not isinstance(join.this, exp.Table):
+            continue
+        key = _layer_key(index, join.this)
+        if key is None or index.tables[key]["kind"] != "history" or not join.args.get("on"):
+            continue
+        alias = join.this.alias_or_name.upper()
+        cols = [c for c in join.args["on"].find_all(exp.Column) if c.table.upper() == alias]
+        if not cols:
+            continue
+        probe = tree.copy()
+        for k in ("group", "order", "having", "limit", "distinct"):
+            probe.set(k, None)
+        for later in probe.args["joins"][i:]:  # keep the unmatched rows through the joins that follow
+            later.set("side", "LEFT")
+        probe.set("expressions", [exp.Count(this=exp.Star())])
+        probe = probe.where(exp.Is(this=cols[0].copy(), expression=exp.Null()))
+        missing = adapter.run_select(probe.sql(dialect=dialect), max_rows=1).rows[0][0]
+        if missing:
+            notes.append(f"{int(missing)} rows found no matching row in {key} for that join and are not included")
+    return notes
+
+
 def run_agent(
     llm: JsonLLM,
     adapter: SourceAdapter,
@@ -184,6 +351,7 @@ def run_agent(
     allowed = {k: profiles[k] for k in index.tables if k in profiles}
     steps: list[dict] = []
     empty: dict | None = None  # an empty result gets one chance to be fixed
+    warned: set[str] = set()  # queries already sent back once; the same query again means "intended"
 
     for _ in range(cfg.max_steps):
         prompt = json.dumps({"context": context, "steps_so_far": steps}, sort_keys=True, ensure_ascii=False, default=str)
@@ -200,8 +368,24 @@ def run_agent(
         elif action == "run_sql":
             sql = out.get("sql", "").strip().rstrip(";").strip()
             problems = check_query(sql, allowed, adapter.sqlglot_dialect)
+            dialect = adapter.sqlglot_dialect
+            soft = (
+                []
+                if problems or sql in warned
+                else version_rule_issues(sql, index, dialect)
+                + value_word_issues(sql, index, extracted, dialect)
+                + count_grain_issues(sql, index, extracted, dialect)
+            )
             if problems:
                 observation = {"error": "the query was not run", "problems": problems}
+            elif soft:
+                warned.add(sql)
+                observation = {
+                    "warning": "the query was not run: it may not answer the question as asked",
+                    "problems": soft,
+                    "hint": "fix the query using the context: join patterns, stored values, counting rules. "
+                    "If the query is right as it is, run the same query again unchanged.",
+                }
             else:
                 try:
                     result = adapter.run_select(sql, max_rows=cfg.max_rows)
@@ -216,6 +400,10 @@ def run_agent(
                         "truncated": result.truncated,
                     }
                     if result.rows or empty is not None:
+                        try:
+                            answer["notes"] = unmatched_rows(adapter, index, sql, adapter.sqlglot_dialect)
+                        except Exception as exc:  # a note we could not compute is not worth failing the answer
+                            answer["notes"] = [f"could not check for unmatched rows: {adapter.map_error(exc)}"]
                         return {**answer, "steps": steps + [step]}
                     empty = answer
                     observation = {
