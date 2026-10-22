@@ -66,6 +66,9 @@ class SqliteAdapter(SourceAdapter):
     def date_literal(self, value):
         return f"'{value.isoformat()}'"
 
+    def datetime_literal(self, value):
+        return f"'{value.isoformat()}'"
+
     def type_family(self, data_type):
         return {"DATE": "date", "INTEGER": "number", "REAL": "number", "TEXT": "text"}.get(
             data_type.upper(), "other"

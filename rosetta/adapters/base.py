@@ -6,7 +6,7 @@ modules never see a driver, a catalog view or a SQL dialect quirk.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Sequence
 
 
@@ -81,6 +81,10 @@ class SourceAdapter(ABC):
 
     @abstractmethod
     def date_literal(self, value: date) -> str: ...
+
+    @abstractmethod
+    def datetime_literal(self, value: datetime) -> str:
+        """A literal that keeps the time of day, so it equals a stored value exactly."""
 
     @abstractmethod
     def type_family(self, data_type: str) -> str:

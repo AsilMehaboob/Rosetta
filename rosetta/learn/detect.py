@@ -28,8 +28,9 @@ LINKS = "links"
 
 @dataclass(frozen=True)
 class DetectConfig:
-    version: str = "detect-1"
+    version: str = "detect-3"
     code_max_distinct: int = 50  # a column with this few values is a code list
+    lookup_max_rows: int = 50  # tables this small are reference lists; their rows are kept
     entity_options: int = 12  # entity columns (or column pairs) tried per table
     sentinel_gap_years: int = 50  # a max date this far past the next one means "never ends"
     max_overlap_share: float = 0.005  # history versions of one entity may overlap on this share of rows
@@ -233,6 +234,7 @@ def _find_snapshot(t: _Table, cfg: DetectConfig) -> dict[str, Any] | None:
             "evidence": f"each {'+'.join(entity)} appears at most once per {d}; "
             f"{len(dates_seen)} dates, {round(coverage * 100, 1)}% of entity x date slots filled",
             "current_rule": {"type": "latest_snapshot", "column": d, "value": latest},
+            "current_sql": f"{t.q(d)} = (SELECT MAX({t.q(d)}) FROM {t.src})",
             "rule_text": f"each {'+'.join(entity)} appears once per {d}; for the current state use "
             f"{d} = {latest}; counting entities across several {d} values counts each one "
             "several times",
@@ -316,6 +318,13 @@ def _find_history(t: _Table, cfg: DetectConfig) -> dict[str, Any] | None:
                 ([f"{x} = {sentinel['value']}"] if sentinel else []) + ([f"{x} is empty"] if null_open else [])
             )
             end_cmp = "<" if touching_end else "<="
+            # ready-made SQL, so later steps copy the exact marker (time of day included)
+            open_parts = ([f"{t.q(x)} = {t.adapter.datetime_literal(_as_datetime(sentinel['value']))}"]
+                          if sentinel else []) + ([f"{t.q(x)} IS NULL"] if null_open else [])
+            current_sql = open_parts[0] if len(open_parts) == 1 else "(" + " OR ".join(open_parts) + ")"
+            as_of_sql = (
+                f"{t.q(s)} <= {{as_of}} AND ({' OR '.join(open_parts)} OR {{as_of}} {end_cmp} {t.q(x)})"
+            )
             return {
                 "entity": list(entity),
                 "start": s,
@@ -338,6 +347,8 @@ def _find_history(t: _Table, cfg: DetectConfig) -> dict[str, Any] | None:
                     "null_is_open": null_open,
                 },
                 "as_of_rule": {"type": "interval", "start": s, "end": x, "end_inclusive": not touching_end},
+                "current_sql": current_sql,
+                "as_of_sql": as_of_sql,
                 "rule_text": f"one version per {'+'.join(entity)} at a time; current version: {open_desc}; "
                 f"as of date D: {s} <= D and ({open_desc} or D {end_cmp} {x})",
             }
@@ -404,9 +415,21 @@ def detect_table(adapter: SourceAdapter, profile: dict[str, Any], cfg: DetectCon
         "history": None,
         "versioned": None,
         "code_behaviour": {},
+        "lookup_rows": None,
     }
     if t.rows == 0:
         return finding
+
+    if t.rows <= cfg.lookup_max_rows:
+        # a small reference list (statuses, types) means little without its rows;
+        # personal-data columns are left out
+        shown = sorted(n for n in t.cols if not t.cols[n]["sensitive"])
+        order = ", ".join(t.q(n) for n in shown)
+        rows = t.select(f"SELECT {order} FROM {t.src} ORDER BY {order}", max_rows=cfg.lookup_max_rows)
+        finding["lookup_rows"] = {
+            "columns": shown,
+            "rows": [[to_json_value(v) for v in r] for r in rows],
+        }
 
     unique = [n for n in t.cols if t.full(n) and t.distinct(n) == t.rows]
     if not t.exact:

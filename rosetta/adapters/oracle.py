@@ -1,6 +1,6 @@
 """Oracle adapter (python-oracledb thin mode, no client install needed)."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Sequence
 
 import oracledb
@@ -164,6 +164,11 @@ class OracleAdapter(SourceAdapter):
 
     def date_literal(self, value: date) -> str:
         return f"DATE '{value.isoformat()}'"
+
+    def datetime_literal(self, value: datetime) -> str:
+        if value == datetime(value.year, value.month, value.day):
+            return self.date_literal(value.date())
+        return f"TO_DATE('{value:%Y-%m-%d %H:%M:%S}', 'YYYY-MM-DD HH24:MI:SS')"
 
     def type_family(self, data_type: str) -> str:
         base = data_type.split("(")[0].upper()

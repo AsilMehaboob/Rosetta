@@ -27,6 +27,8 @@ class Settings:
     query_timeout_seconds: int
     query_max_rows: int
     data_dir: str
+    gemini_api_key: str = field(repr=False)
+    gemini_model: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -44,4 +46,7 @@ class Settings:
             query_timeout_seconds=int(os.getenv("QUERY_TIMEOUT_SECONDS", "30")),
             query_max_rows=int(os.getenv("QUERY_MAX_ROWS", "1000")),
             data_dir=os.getenv("DATA_DIR", "data"),
+            # only the LLM stages need these, so they are checked where they are used
+            gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
+            gemini_model=os.getenv("GEMINI_MODEL", "").strip(),
         )
