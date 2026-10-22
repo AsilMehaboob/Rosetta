@@ -31,6 +31,11 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: none; /* Firefox: scrolling still works, the bar is hidden */
+}
+
+*::-webkit-scrollbar {
+  display: none; /* Chrome, Edge, Safari */
 }
 
 html,
