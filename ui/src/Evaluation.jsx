@@ -44,51 +44,86 @@ function Dot({ v, run }) {
   return <span className={`vdot ${tone}`} title={`Run ${run}: ${text}`} />;
 }
 
-function RunDetail({ record }) {
-  const { text, tone } = verdict(record.verdict);
+// One side of the comparison: a query and the rows it returned.
+function Pane({ title, meta, sql, columns, rows, rowCount, children }) {
   return (
-    <div className="run">
-      <div className="run-head">
-        <span className={`badge ${tone}`}>Run {record.run} · {text}</span>
-        <span className="muted">
-          {secs(record.seconds)} · {record.llm_calls ?? 0} model calls · {record.row_count} rows
-        </span>
+    <div className="pane">
+      <div className="pane-head">
+        <span>{title}</span>
+        {meta && <span className="muted">{meta}</span>}
       </div>
-      {record.reason && <p className="run-reason">{record.reason}</p>}
-      {record.answer && <p className="run-answer">{record.answer}</p>}
-      {record.sql && (
-        <details className="evidence">
-          <summary>Query</summary>
-          <pre className="sql">{record.sql}</pre>
-        </details>
-      )}
-      {record.columns?.length > 0 && (
-        <details className="evidence">
-          <summary>Rows</summary>
-          <ResultTable columns={record.columns} rows={record.rows} />
-        </details>
+      {children}
+      {sql ? <pre className="sql">{sql}</pre> : <p className="muted">No query.</p>}
+      {columns?.length > 0 && (
+        <>
+          <ResultTable columns={columns} rows={rows} />
+          {rowCount > rows.length && (
+            <p className="muted small">First {rows.length} of {rowCount.toLocaleString()} rows saved.</p>
+          )}
+        </>
       )}
     </div>
   );
 }
 
 function QuestionDetail({ item, runs, expected }) {
+  const [shown, setShown] = useState(runs[0]?.run);
+  const record = runs.find((r) => r.run === shown) || runs[0];
+  const v = record && verdict(record.verdict);
   return (
     <div className="q-detail">
       {item.checks && <p className="muted">Checks: {item.checks}</p>}
       {item.note && <p className="q-note">{item.note}</p>}
-      {expected ? (
-        <details className="evidence">
-          <summary>Expected answer ({expected.row_count} rows, from the reference query)</summary>
-          <pre className="sql">{expected.sql}</pre>
-          <ResultTable columns={expected.columns} rows={expected.rows} />
-        </details>
-      ) : (
-        <p className="muted">Expected: an honest “the data cannot answer this”.</p>
+
+      <div className="run-tabs">
+        {runs.map((r) => (
+          <button key={r.run} type="button" className={r.run === record?.run ? "on" : ""} onClick={() => setShown(r.run)}>
+            <span className={`vdot ${verdict(r.verdict).tone}`} />
+            Run {r.run}
+          </button>
+        ))}
+      </div>
+
+      {record && (
+        <p className="run-verdict">
+          <span className={`badge ${v.tone}`}>{v.text}</span>
+          {record.reason && <span className="muted"> {record.reason}</span>}
+        </p>
       )}
-      {runs.map((r) => (
-        <RunDetail key={r.run} record={r} />
-      ))}
+
+      <div className="compare">
+        {record ? (
+          <Pane
+            title={`Rosetta · run ${record.run}`}
+            meta={`${record.row_count} rows · ${secs(record.seconds)} · ${record.llm_calls ?? 0} model calls`}
+            sql={record.sql}
+            columns={record.columns}
+            rows={record.rows}
+            rowCount={record.row_count}
+          >
+            {record.answer && <p className="run-answer">{record.answer}</p>}
+          </Pane>
+        ) : (
+          <div className="pane muted">No runs.</div>
+        )}
+        {expected ? (
+          <Pane
+            title="Reference query"
+            meta={`${expected.row_count} rows`}
+            sql={expected.sql}
+            columns={expected.columns}
+            rows={expected.rows}
+            rowCount={expected.row_count}
+          />
+        ) : (
+          <div className="pane">
+            <div className="pane-head">
+              <span>Expected</span>
+            </div>
+            <p className="muted">An honest “the data cannot answer this”, with no query and no numbers.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

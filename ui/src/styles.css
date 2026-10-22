@@ -642,7 +642,7 @@ code {
   background: var(--warn);
 }
 
-.q-open td {
+.q-open > td {
   white-space: normal;
   background: var(--bg);
 }
@@ -696,4 +696,85 @@ code {
 .as-of input.runs {
   width: 56px;
   color: var(--text);
+}
+
+/* a run next to the reference query */
+
+.run-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.run-tabs button {
+  display: flex;
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.run-tabs button.on {
+  color: var(--text);
+  background: var(--soft);
+}
+
+.run-verdict {
+  font-size: 13px;
+}
+
+.run-verdict .badge {
+  margin: 0 6px 0 0;
+}
+
+.compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pane-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pane-head .muted {
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.pane .results {
+  margin-top: 0;
+}
+
+.pane .table-wrap {
+  max-height: 300px;
+}
+
+.run-answer {
+  margin: 0;
+}
+
+.small {
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .compare {
+    grid-template-columns: 1fr;
+  }
 }
