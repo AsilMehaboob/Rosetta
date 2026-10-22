@@ -8,7 +8,7 @@ function Section({ title, children }) {
 }
 
 export default function Evidence({ result }) {
-  const { sql, definitions = [], rules = [], values = [], dates = [], steps = [] } = result;
+  const { sql, definitions = [], rules = [], values = [], dates = [] } = result;
   return (
     <details className="evidence">
       <summary>How was this calculated?</summary>
@@ -57,20 +57,6 @@ export default function Evidence({ result }) {
       {sql && (
         <Section title="Query">
           <pre className="sql">{sql}</pre>
-        </Section>
-      )}
-
-      {steps.length > 0 && (
-        <Section title={`Agent steps (${steps.length})`}>
-          <ol className="steps">
-            {steps.map((s, i) => (
-              <li key={i}>
-                <span className="step-action">{s.action}</span>
-                {s.thinking && <p>{s.thinking}</p>}
-                {s.observation && <pre className="sql small">{JSON.stringify(s.observation, null, 2)}</pre>}
-              </li>
-            ))}
-          </ol>
         </Section>
       )}
 

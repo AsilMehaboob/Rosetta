@@ -15,6 +15,7 @@ import re
 from itertools import combinations
 from typing import Any
 
+from rosetta.answer.chart import suggest_chart
 from rosetta.llm import JsonLLM
 
 PROMPT_VERSION = "answer-7"
@@ -259,6 +260,7 @@ def build_answer(
         "columns": columns,
         "rows": rows,
         "row_count": len(rows),
+        "chart": suggest_chart(columns, rows, extracted),  # None when a chart would add nothing
         "sql": agent["sql"],
         **proof,
         "notes": notes,

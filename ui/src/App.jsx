@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { askQuestion } from "./api.js";
 import AnswerCard from "./AnswerCard.jsx";
 import AskForm from "./AskForm.jsx";
+import Chart from "./Chart.jsx";
 import Evaluation from "./Evaluation.jsx";
 import Evidence from "./Evidence.jsx";
 import ResultTable from "./ResultTable.jsx";
@@ -40,6 +41,7 @@ function Reply({ turn }) {
   return (
     <>
       <AnswerCard result={result} />
+      <Chart chart={result.chart} />
       <ResultTable columns={result.columns} rows={result.rows || []} />
       <Evidence result={result} />
     </>
@@ -72,8 +74,13 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <span className="logo">Rosetta</span>
+        <span className="logo">Rosetta</span>
+        <div className="topbar-right">
+          {view === "chat" && turns.length > 0 && (
+            <button type="button" className="ghost" onClick={() => setTurns([])} disabled={busy}>
+              New chat
+            </button>
+          )}
           <nav className="tabs">
             <button type="button" className={view === "chat" ? "on" : ""} onClick={() => setView("chat")}>
               Chat
@@ -83,11 +90,6 @@ export default function App() {
             </button>
           </nav>
         </div>
-        {view === "chat" && turns.length > 0 && (
-          <button type="button" className="ghost" onClick={() => setTurns([])} disabled={busy}>
-            New chat
-          </button>
-        )}
       </header>
 
       {view === "eval" ? (
