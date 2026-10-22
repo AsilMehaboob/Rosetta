@@ -1,0 +1,28 @@
+# Hand corrections to the learned semantic layer.
+#
+# Rosetta learns everything from the schema and the values. When something it
+# learned is wrong, correct it here instead of editing its output: the Assemble
+# stage applies these on top, tests corrected terms on the data like any other,
+# and lists every correction in CHANGELOG.md. Every entry must give a reason.
+#
+# Examples:
+#
+#   - kind: term
+#     action: replace            # add | replace | remove
+#     id: SCHEMA.TABLE:term_slug
+#     term: {sql: "...", definition: "..."}
+#     reason: why the learned version was wrong
+#
+#   - kind: term
+#     action: add
+#     term: {table: SCHEMA.TABLE, term: "...", kind: filter, definition: "...", sql: "..."}
+#     reason: why it was missing
+#
+#   - kind: column
+#     action: replace
+#     table: SCHEMA.TABLE
+#     column: COLUMN_NAME
+#     fields: {description: "..."}
+#     reason: why the learned description was wrong
+
+overrides: []
