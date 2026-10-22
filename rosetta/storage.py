@@ -7,6 +7,7 @@ byte-identical files.
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,10 @@ class Storage:
         path = self._path(kind, key)
         path.parent.mkdir(parents=True, exist_ok=True)
         text = json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-        path.write_text(text, encoding="utf-8", newline="\n")
+        # write aside, then swap in, so a reader never sees a half-written file
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(text, encoding="utf-8", newline="\n")
+        os.replace(tmp, path)
         return path
 
     def read(self, kind: str, key: str) -> Any | None:
