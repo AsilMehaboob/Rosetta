@@ -1,10 +1,11 @@
 """HTTP front door. Thin: it calls the Learn and Answer modules and holds no logic."""
 
 import os
+import threading
 from datetime import date
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -15,6 +16,7 @@ from rosetta.answer.retrieve import load_index, retrieve
 from rosetta.answer.sql_agent import run_agent
 from rosetta.learn.profile import PROFILES
 from rosetta.config import Settings
+from rosetta import evaluate
 from rosetta.learn.annotate import run_annotate
 from rosetta.learn.assemble import run_assemble
 from rosetta.learn.detect import run_detect
@@ -125,3 +127,66 @@ def ask(request: ExtractRequest) -> dict:
         return answer_question(llm, adapter, storage, load_index(storage), request.question, reference)
     finally:
         adapter.close()
+
+
+# --- evaluation: run the benchmark in the background and read saved results
+
+
+class EvalRequest(BaseModel):
+    runs: int = Field(default=3, ge=1, le=5, description="times each question is asked")
+    only: list[str] | None = Field(default=None, description="question ids to run; all when empty")
+    reference_date: date | None = None
+
+
+_eval_lock = threading.Lock()
+_eval_state: dict = {"running": False}
+
+
+def _run_eval(request: EvalRequest) -> None:
+    def progress(state: dict) -> None:
+        _eval_state.update(state)
+
+    try:
+        evaluate.run_benchmark(request.runs, request.only, request.reference_date, progress)
+    except Exception as exc:  # shown in the status, so the UI can say why
+        _eval_state["error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        _eval_state["running"] = False
+
+
+@app.get("/eval/benchmark")
+def eval_benchmark() -> list[dict]:
+    """The benchmark questions (without their reference queries)."""
+    return [{k: v for k, v in q.items() if k != "reference_sql"} for q in evaluate.load_benchmark()["questions"]]
+
+
+@app.post("/eval/run")
+def eval_run(request: EvalRequest) -> dict:
+    """Start an evaluation in the background; follow it with /eval/status."""
+    with _eval_lock:
+        if _eval_state.get("running"):
+            raise HTTPException(409, "An evaluation is already running")
+        _eval_state.clear()
+        _eval_state.update({"running": True, "done": 0, "total": None, "error": None})
+    threading.Thread(target=_run_eval, args=(request,), daemon=True).start()
+    return dict(_eval_state)
+
+
+@app.get("/eval/status")
+def eval_status() -> dict:
+    return dict(_eval_state)
+
+
+@app.get("/eval/results")
+def eval_results() -> list[dict]:
+    """Saved evaluations, newest first."""
+    return evaluate.list_results()
+
+
+@app.get("/eval/results/{run_id}")
+def eval_result(run_id: str) -> dict:
+    """One saved evaluation: summary, every run and the expected rows."""
+    found = evaluate.read_result(run_id)
+    if found is None:
+        raise HTTPException(404, "No such evaluation")
+    return found
