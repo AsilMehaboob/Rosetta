@@ -1,0 +1,123 @@
+# Benchmark questions for the evaluation harness (python -m rosetta.evaluate).
+#
+# Questions 1-6 and their reference SQL are copied from "GenBI Hackathon 2026 – Benchmark.xlsx".
+# The reference SQL is only used to compute the expected rows; Rosetta never sees it.
+# Answers are compared as data: column names, column order and row order are ignored.
+#
+# now_token: the word the reference SQL uses for "now". It is replaced by the run's reference
+# date (at the current time of day), so date-dependent questions are scored against the same "today"
+# Rosetta was given.
+now_token: SYSDATE
+
+questions:
+  - id: q1
+    level: Easy
+    question: List the active shops in Istanbul with their shop number, district and sales manager.
+    checks: Works out what "active" means from the columns and values
+    expected_row_count: 50
+    reference_sql: |
+      SELECT SHOP_ID, SHOP_NUM, SHOP_NAME, SHOP_DISTRICT, SALES_MANAGER_USER_NAME
+      FROM VID.D_SHOP
+      WHERE SHOP_CITY = 'İSTANBUL'
+        AND SHOP_STATUS = 'Active'
+        AND SHOP_EDT >= SYSDATE
+      ORDER BY SHOP_DISTRICT, SHOP_NAME
+
+  - id: q2
+    level: Easy
+    question: How many phone campaigns are available for sale, by device?
+    checks: Works out what "available for sale" means
+    expected_row_count: 23
+    reference_sql: |
+      SELECT DEVICE_COMMERCIAL_NAME, COUNT(OFFER_ID) AS CAMPAIGN_COUNT
+      FROM VID.D_DEVICE_OFFERING
+      WHERE OFFER_EDT >= SYSDATE
+        AND PRODUCT_SUB_TYPE_CD = 'PHONE'
+      GROUP BY DEVICE_COMMERCIAL_NAME
+      ORDER BY CAMPAIGN_COUNT DESC, DEVICE_COMMERCIAL_NAME
+
+  - id: q3
+    level: Medium
+    question: Which customer segment had the highest number of unique customers assigned in June 2025?
+    checks: Counts customers, not records
+    expected_row_count: 7
+    reference_sql: |
+      SELECT SEGMENT, COUNT(DISTINCT UNIFIED_CUSTOMER_ID) AS UNIQUE_CUSTOMER_COUNT
+      FROM VID.D_CONV_SEGMENT_HIST
+      WHERE SEGMENT_SDT >= DATE '2025-06-01'
+        AND SEGMENT_SDT <  DATE '2025-07-01'
+      GROUP BY SEGMENT
+      ORDER BY UNIQUE_CUSTOMER_COUNT DESC
+
+  - id: q4
+    level: Medium
+    question: Compare monthly gross adds and disconnections for July and August 2026, showing the month-over-month change in each.
+    checks: Finds how lines joining and leaving are recorded, then compares periods
+    expected_row_count: 2
+    reference_sql: |
+      SELECT EVENT_MONTH, GROSS_ADDS, DISCONNECTIONS,
+             GROSS_ADDS - LAG(GROSS_ADDS) OVER (ORDER BY EVENT_MONTH) AS GROSS_ADD_CHANGE,
+             DISCONNECTIONS - LAG(DISCONNECTIONS) OVER (ORDER BY EVENT_MONTH) AS DISCONNECTION_CHANGE
+      FROM (
+        SELECT TRUNC(EVENT_DT, 'MM') AS EVENT_MONTH,
+               SUM(CASE WHEN LIFECYCLE_GROUP_CD = 'grossadd' THEN 1 ELSE 0 END) AS GROSS_ADDS,
+               SUM(CASE WHEN LIFECYCLE_GROUP_CD = 'disconnection' THEN 1 ELSE 0 END) AS DISCONNECTIONS
+        FROM VID.F_LIFECYCLE_KPI
+        WHERE EVENT_DT >= DATE '2026-07-01' AND EVENT_DT < DATE '2026-09-01'
+        GROUP BY TRUNC(EVENT_DT, 'MM')
+      )
+      ORDER BY EVENT_MONTH
+
+  - id: q5
+    level: Hard
+    question: As of 28 August 2026, how many subscribers in the mobile base used a physical SIM and how many used an eSIM?
+    checks: Discovers who counts as the "mobile base" and reads SIM history at a point in time
+    expected_row_count: 3
+    reference_sql: |
+      SELECT f.SNAPSHOT_DT, h.ESIM_IND, COUNT(f.SUBSCRIPTION_ID) AS SUBSCRIBER_COUNT
+      FROM VID.F_SUBSCRIPTION_D f
+      JOIN VID.D_STATUS s ON s.STATUS_ID = f.STATUS_ID
+      LEFT JOIN VID.D_ICCI_IMSI_SUBS_HIST h
+        ON h.SUBSCRIPTION_ID = f.SUBSCRIPTION_ID
+       AND TRUNC(h.ICCI_IMSI_SUBS_SDT) <= f.SNAPSHOT_DT
+       AND h.ICCI_IMSI_SUBS_EDT > f.SNAPSHOT_DT + INTERVAL '23:59:59' HOUR TO SECOND
+      WHERE f.SNAPSHOT_DT = DATE '2026-08-28'
+        AND s.VFTR_BASE_IND = 'Y'
+        AND f.MAIN_OFFER_ID <> '1-IFF31UQ'
+      GROUP BY f.SNAPSHOT_DT, h.ESIM_IND
+      ORDER BY h.ESIM_IND
+
+  - id: q6
+    level: Hard
+    question: For every disconnection in August 2026, which tariff was the subscription on at the moment of the event? Count disconnections per tariff.
+    checks: Looks up the state of a line at a past moment
+    expected_row_count: 33
+    note: >
+      The reference query joins the tariff list on its id without picking one version, and 5 tariffs have more
+      than one version in that list, so 130 disconnections are counted twice (937 in total for 807 events).
+      Rosetta counts each disconnection once, so this question is expected to be reported as a mismatch.
+    reference_sql: |
+      SELECT t.TARIFF_NAME, COUNT(*) AS DISCONNECTIONS
+      FROM VID.F_LIFECYCLE_KPI k
+      JOIN VID.D_SUBS_TARIFF_HIST th
+        ON th.SUBSCRIPTION_ID = k.SUBSCRIPTION_ID
+       AND k.EVENT_DT >= th.SUBS_OFFER_SDT
+       AND k.EVENT_DT <  th.SUBS_OFFER_EDT
+      JOIN VID.D_TARIFF t ON t.OFFER_ID = th.OFFER_ID
+      WHERE k.LIFECYCLE_GROUP_CD = 'disconnection'
+        AND k.EVENT_DT >= DATE '2026-08-01' AND k.EVENT_DT < DATE '2026-09-01'
+      GROUP BY t.TARIFF_NAME
+      ORDER BY DISCONNECTIONS DESC
+
+  # Questions the data cannot answer: the right result is an honest refusal, never a made-up number.
+  - id: r1
+    level: Refusal
+    question: What was the average hotel room price in Paris last year?
+    checks: Says so when the data cannot answer
+    expect: cannot_answer
+
+  - id: r2
+    level: Refusal
+    question: How much revenue did flight ticket sales bring in during August 2026?
+    checks: Says so when the data cannot answer
+    expect: cannot_answer
