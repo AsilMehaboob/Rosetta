@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from rosetta.adapters import get_adapter
 from rosetta.config import Settings
 from rosetta.learn.annotate import run_annotate
+from rosetta.learn.assemble import run_assemble
 from rosetta.learn.detect import run_detect
 from rosetta.learn.profile import run_profile
 from rosetta.llm import GeminiLLM
@@ -17,7 +18,7 @@ app = FastAPI(title="Rosetta", version="0.1.0")
 
 
 class LearnRequest(BaseModel):
-    stage: Literal["profile", "detect", "annotate"] = "profile"
+    stage: Literal["profile", "detect", "annotate", "assemble"] = "profile"
     force: bool = False  # re-measure even when a table's fingerprint is unchanged
 
 
@@ -39,6 +40,8 @@ def learn(request: LearnRequest) -> dict:
     try:
         if request.stage == "detect":
             return run_detect(adapter, storage)
+        if request.stage == "assemble":
+            return run_assemble(adapter, storage)
         return run_profile(adapter, storage, force=request.force)
     finally:
         adapter.close()
