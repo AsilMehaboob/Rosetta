@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { askQuestion } from "./api.js";
+import AnswerCard from "./AnswerCard.jsx";
 import AskForm from "./AskForm.jsx";
+import ResultTable from "./ResultTable.jsx";
 
 export default function App() {
   const [result, setResult] = useState(null);
@@ -27,7 +29,12 @@ export default function App() {
       </header>
       <AskForm onAsk={ask} busy={busy} />
       {error && <p className="error">{error}</p>}
-      {result && <p className="answer-text">{result.answer}</p>}
+      {result && (
+        <>
+          <AnswerCard result={result} />
+          <ResultTable columns={result.columns} rows={result.rows || []} />
+        </>
+      )}
     </main>
   );
 }
