@@ -485,6 +485,13 @@ def retrieve(
                     if t["kind"] == "history" and len((t["grain"] or {}).get("columns", [])) >= 2
                     else None
                 ),
+                # records the business normally leaves out (test, dummy, internal), learned from the data
+                "left_out_by_default": [
+                    {"term": x["term"], "definition": x["definition"], "exclusion_sql": x["exclusion_sql"],
+                     "proof": x["verification"]["proof"]}
+                    for x in index.terms.values()
+                    if x["table"] == key and x.get("left_out_by_default") and x.get("exclusion_sql")
+                ],
                 "columns": [_column_brief(c) for c in ranked_columns],
                 "other_columns": sorted(c["name"] for c in t["columns"] if c["name"] not in wanted),
             }

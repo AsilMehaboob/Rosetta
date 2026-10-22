@@ -37,7 +37,7 @@ VERIFICATIONS = "verifications"
 
 @dataclass(frozen=True)
 class AssembleConfig:
-    version: str = "assemble-1"
+    version: str = "assemble-2"
     derive_max_parent_rows: int = 50  # filters on reference tables this small are carried through links
     column_values_max: int = 50  # code values listed in the layer
     timeout_seconds: int = 60
@@ -65,7 +65,12 @@ def _detail(finding: dict) -> dict:
 def derive_linked_terms(
     terms: list[dict], findings: dict[str, dict], links: list[dict], adapter: SourceAdapter, cfg: AssembleConfig
 ) -> list[dict]:
-    """A filter on a small reference table also selects rows of every table that links to it."""
+    """A filter on a small reference table also selects rows of every table that links to it.
+
+    From a small table with one row per key every filter is carried over. From a small table that
+    keeps dated versions of its entries (a catalogue), only the filters marking records left out by
+    default are, so test or internal entries are left out wherever they are referred to.
+    """
     by_table: dict[str, list[dict]] = {}
     for t in terms:
         if t["kind"] == "filter":
@@ -76,9 +81,11 @@ def derive_linked_terms(
             continue
         parent, child = link["parent"]["table"], link["child"]["table"]
         info = findings[parent]
-        if info["kind"] != "keyed" or info["row_count"] > cfg.derive_max_parent_rows:
+        if info["row_count"] > cfg.derive_max_parent_rows or info["kind"] not in ("keyed", "entity_by_date"):
             continue
         for t in by_table.get(parent, []):
+            if info["kind"] == "entity_by_date" and not t.get("left_out_by_default"):
+                continue
             column, key = link["child"]["column"], link["parent"]["column"]
             name = f"{t['term']} (via {column})"
             derived.append(
@@ -95,6 +102,7 @@ def derive_linked_terms(
                     "evidence": f"{t['evidence']}; {column} links to {parent}.{key} "
                     f"({round(link['containment'] * 100, 1)}% of values match)",
                     "confidence": t["confidence"],
+                    "left_out_by_default": bool(t.get("left_out_by_default")),
                     "origin": {"type": "derived", "from": t["id"], "link": f"{child}.{column} -> {parent}.{key}"},
                 }
             )
@@ -329,6 +337,9 @@ def run_assemble(adapter: SourceAdapter, storage: Storage, cfg: AssembleConfig |
     verified, held_back = [], []
     for (term, _), result in zip(checked, results):
         entry = {**{k: v for k, v in term.items() if k not in ("status", "issues")}, "verification": result}
+        if entry.get("left_out_by_default") and entry["kind"] == "filter":
+            # keeps every row the filter does not select, rows where it is unknown (nulls) included
+            entry["exclusion_sql"] = f"(CASE WHEN {entry['sql']} THEN 1 ELSE 0 END) = 0"
         (verified if result["status"] == "verified" else held_back).append(entry)
 
     tables = {

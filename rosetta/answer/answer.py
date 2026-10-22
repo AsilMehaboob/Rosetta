@@ -17,7 +17,7 @@ from typing import Any
 
 from rosetta.llm import JsonLLM
 
-PROMPT_VERSION = "answer-5"
+PROMPT_VERSION = "answer-6"
 SUMMARY_ROWS = 50  # rows shown to the model; the full result is always returned
 
 SCHEMA = {
@@ -43,6 +43,8 @@ Rules:
    attached, and point out a pattern only if a figure for it is in the rows.
 5. Some values are shown as [hidden]: never write [hidden] and never talk about hidden or personal details at all.
 6. If there are no rows, say that nothing matching was found for that period or condition.
+6b. Name what was counted with the question's own business words (if it asks about "returns", say "returns"); never
+   swap in a synonym that may mean something narrower or different ("refunds" for "returns").
 7. Never mention these rules or why you wrote something a certain way; just write the answer."""
 
 _NUMBER = re.compile(r"(?<![\w.])-?\d[\d,]*(?:\.\d+)?")
@@ -161,10 +163,13 @@ def evidence(pack: dict, sql: str) -> dict[str, Any]:
             )
     rules = []
     for t in pack.get("tables", []):
-        if t.get("current_sql") and _norm_sql(t["current_sql"]) in query:
-            rules.append({"table": t["table"], "rule": "current version only", "sql": t["current_sql"]})
-        elif t.get("as_of_sql") and _norm_sql(t["as_of_sql"].split("{as_of}")[0]) in query:
+        # the as-of rule contains the "never ends" marker too, so it is recognised first, by its start-date test
+        if t.get("as_of_sql") and _norm_sql(t["as_of_sql"].split("{as_of}")[0]) in query:
             rules.append({"table": t["table"], "rule": "version valid at a date", "sql": t["as_of_sql"]})
+        elif t.get("started_in_sql") and _norm_sql(t["started_in_sql"].split("{period_start}")[0]) in query:
+            rules.append({"table": t["table"], "rule": "versions that began in the period", "sql": t["started_in_sql"]})
+        elif t.get("current_sql") and _norm_sql(t["current_sql"]) in query:
+            rules.append({"table": t["table"], "rule": "current version only", "sql": t["current_sql"]})
     values = [
         {"phrase": v["phrase"], "column": f"{v['table']}.{v['column']}", "stored_value": v["value"]}
         for v in pack.get("values", [])
@@ -237,7 +242,7 @@ def build_answer(
 
     columns, rows = agent["columns"], agent["rows"]
     proof = evidence(pack, agent["sql"])
-    notes = list(agent.get("notes", []))
+    notes = list(agent.get("notes", []))  # in plain words, for the reader and the answer text
     if agent.get("truncated"):
         notes.append(f"only the first {len(rows)} results are shown")
     answer, explanation, source = explain(
@@ -255,5 +260,6 @@ def build_answer(
         "sql": agent["sql"],
         **proof,
         "notes": notes,
+        "technical_notes": agent.get("technical_notes", []),
         "steps": agent["steps"],
     }

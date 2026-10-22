@@ -11,7 +11,7 @@ always come from the database, never from the model's text.
 import json
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import sqlglot
@@ -24,7 +24,7 @@ from rosetta.answer.sqlcheck import check_query
 from rosetta.learn.profile import to_json_value
 from rosetta.llm import JsonLLM
 
-PROMPT_VERSION = "sql-agent-3"
+PROMPT_VERSION = "sql-agent-5"
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,8 @@ Rules:
 2. When a verified term matches words of the question, use its SQL as written.
 3. Copy stored values exactly as given in "values" or seen with get_column_values (case, accents, spaces).
 4. History tables keep versions. When the history table is the one you read from, add its current_sql for the
-   present, or its as_of_sql with {{as_of}} replaced by a date literal for a past date.
+   present, or its as_of_sql for a past date. For a single day ("as of 3 May"), {{as_of}} is that day's
+   sql_end_of_day from "dates" (the state at the end of the day); a snapshot's date column is compared with sql_at.
 5. To join, copy one of that join's "patterns" (s = the table you join from, j = the table you join into; rename the
    aliases to yours): "now" for the present, "as_of_date" for a given date, "at_time_of_each_row" for the state at the
    moment of each row of the other table (replace s.{{event_date}} with that row's date column), "latest" or "on_date"
@@ -79,7 +80,16 @@ Rules:
    distinct keys (COUNT(DISTINCT key)) when the same thing can appear on several rows (versions, snapshot copies,
    or rows multiplied by a join), and when asked how many entities (customers, patients, accounts) there are.
 9. A date period from "dates" is start <= column < end, with the date literals exactly as given.
+9b. When the question splits or compares by a time unit ("monthly", "per month", "month-over-month", "by week",
+   "each quarter"), return one row per period: a column for the period (the date truncated to that unit, e.g.
+   TRUNC(date, 'MM')) and one column per measure. Put each change on the later period's row with LAG over the period
+   column. Never put several periods side by side in one row.
 10. Join only along the joins given. Select only what the question asks for, with readable aliases; order the rows.
+10a. A table may list records "left_out_by_default" (test, dummy, internal records found in the data). Unless the
+   question asks about such records, add each one's exclusion_sql for every table you read, with that table's alias.
+10b. When the question splits a group into categories that come from a joined table ("how many have A and how many
+   have B"), write LEFT JOIN with the same ON conditions, so records with no match stay in as their own group (an
+   empty category) instead of silently disappearing.
 {dialect_rules}"""
 
 
@@ -92,7 +102,10 @@ def build_context(extracted: dict, pack: dict, adapter: SourceAdapter) -> dict[s
     for d in extracted["dates"]:
         entry = {"text": d["text"], "reading": d["reading"], "kind": d["kind"]}
         if d["kind"] == "point":
-            entry["sql_at"] = _date_sql(adapter, d["at"])
+            day = date.fromisoformat(d["at"])
+            entry["sql_at"] = adapter.date_literal(day)
+            # "as of a day" is the state at the end of that day, after everything that happened on it
+            entry["sql_end_of_day"] = adapter.datetime_literal(datetime(day.year, day.month, day.day, 23, 59, 59))
         elif d["kind"] == "period":
             entry["periods"] = [
                 {"start": _date_sql(adapter, p["start"]), "end": _date_sql(adapter, p["end"])} for p in d["periods"]
@@ -360,12 +373,16 @@ def started_in_issues(sql: str, index: LayerIndex, extracted: dict, dialect: str
     return sorted(set(issues))
 
 
-def unmatched_rows(adapter: SourceAdapter, index: LayerIndex, sql: str, dialect: str) -> list[str]:
-    """How many rows an inner join into a history table silently leaves out, as notes for the answer."""
+def unmatched_rows(adapter: SourceAdapter, index: LayerIndex, sql: str, dialect: str) -> list[dict[str, Any]]:
+    """Records an inner join into a history table silently leaves out.
+
+    Each entry says how many, which table, whether the result is split by that table's values
+    (then the missing records are a whole category that vanished), and a note in plain words.
+    """
     tree = sqlglot.parse_one(sql, read=dialect)
     if not isinstance(tree, exp.Select) or tree.args.get("with"):
         return []
-    notes = []
+    found = []
     joins = tree.args.get("joins") or []
     for i, join in enumerate(joins):
         if join.side or not isinstance(join.this, exp.Table):
@@ -384,10 +401,60 @@ def unmatched_rows(adapter: SourceAdapter, index: LayerIndex, sql: str, dialect:
             later.set("side", "LEFT")
         probe.set("expressions", [exp.Count(this=exp.Star())])
         probe = probe.where(exp.Is(this=cols[0].copy(), expression=exp.Null()))
-        missing = adapter.run_select(probe.sql(dialect=dialect), max_rows=1).rows[0][0]
-        if missing:
-            notes.append(f"{int(missing)} rows found no matching row in {key} for that join and are not included")
-    return notes
+        missing = int(adapter.run_select(probe.sql(dialect=dialect), max_rows=1).rows[0][0] or 0)
+        if not missing:
+            continue
+        # is the result split by this table's values (selected or grouped by)?
+        shown = [*tree.expressions, *(tree.args["group"].expressions if tree.args.get("group") else [])]
+        category = any(c.table.upper() == alias for e in shown for c in e.find_all(exp.Column))
+        found.append(
+            {
+                "count": missing,
+                "table": key,
+                "category": category,
+                "technical": f"{missing} rows found no matching row in {key} for that join and are not included",
+                "plain": f"{missing:,} of the records counted had no matching entry at that point in time and are not "
+                "included",
+            }
+        )
+    return found
+
+
+def left_out_issues(sql: str, index: LayerIndex, extracted: dict, dialect: str) -> list[str]:
+    """Tables read without applying the records they leave out by default, when the question does not ask for them.
+
+    A left-out term counts as applied when every value it compares against appears in the query; a
+    question that names the term's own words (for example asks about test records) needs no exclusion.
+    """
+    tree = sqlglot.parse_one(sql, read=dialect)
+    query_literals = {str(l.this) for l in tree.find_all(exp.Literal) if l.is_string}
+    asked = set(tokens(extracted["question"]))
+    issues = []
+    for key in _query_tables(tree, index):
+        for term in index.terms.values():
+            if term["table"] != key or not term.get("left_out_by_default") or not term.get("exclusion_sql"):
+                continue
+            if asked & set(tokens(term["term"])):
+                continue  # the question is about these records
+            term_tree = sqlglot.parse_one(f"SELECT 1 FROM t WHERE {term['sql']}", read=dialect)
+            needed = {str(l.this) for l in term_tree.find_all(exp.Literal) if l.is_string}
+            if needed and not needed <= query_literals:
+                issues.append(
+                    f"{key} normally leaves out '{term['term']}' ({term['definition']}); the question does not ask "
+                    f"for them, so add: {term['exclusion_sql']}. Run the same query again if they should be counted"
+                )
+    return sorted(set(issues))
+
+
+def dropped_category_issues(adapter: SourceAdapter, index: LayerIndex, sql: str, dialect: str) -> list[str]:
+    """A result split by a joined table's values while an inner join silently drops the records without one."""
+    return [
+        f"{u['count']} records have no matching entry in {u['table']}; the inner join drops them while the result is "
+        f"split by that table's values, so they vanish from the split. Use LEFT JOIN with the same ON conditions to "
+        f"keep them as their own group, or run the same query again if they should be left out"
+        for u in unmatched_rows(adapter, index, sql, dialect)
+        if u["category"]
+    ]
 
 
 def run_agent(
@@ -430,7 +497,13 @@ def run_agent(
                 + value_word_issues(sql, index, extracted, dialect)
                 + count_grain_issues(sql, index, extracted, dialect)
                 + started_in_issues(sql, index, extracted, dialect)
+                + left_out_issues(sql, index, extracted, dialect)
             )
+            if not problems and sql not in warned:
+                try:  # needs the database: how many records an inner join would silently drop
+                    soft += dropped_category_issues(adapter, index, sql, dialect)
+                except Exception:
+                    pass  # if it cannot be measured, the query is not held back for it
             if problems:
                 observation = {"error": "the query was not run", "problems": problems}
             elif soft:
@@ -456,9 +529,12 @@ def run_agent(
                     }
                     if result.rows or empty is not None:
                         try:
-                            answer["notes"] = unmatched_rows(adapter, index, sql, adapter.sqlglot_dialect)
+                            dropped = unmatched_rows(adapter, index, sql, adapter.sqlglot_dialect)
+                            answer["notes"] = [u["plain"] for u in dropped]
+                            answer["technical_notes"] = [u["technical"] for u in dropped]
                         except Exception as exc:  # a note we could not compute is not worth failing the answer
-                            answer["notes"] = [f"could not check for unmatched rows: {adapter.map_error(exc)}"]
+                            answer["notes"] = []
+                            answer["technical_notes"] = [f"could not check for unmatched rows: {adapter.map_error(exc)}"]
                         return {**answer, "steps": steps + [step]}
                     empty = answer
                     observation = {

@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 
 ANNOTATIONS = "annotations"
 TERMS = "terms"
-PROMPT_VERSION = "annotate-3"
+PROMPT_VERSION = "annotate-4"
 MERGE_PROMPT_VERSION = "merge-1"
 
 
@@ -90,8 +90,11 @@ TABLE_SCHEMA = {
                     "sql": {"type": "string"},
                     "evidence": {"type": "string"},
                     "confidence": _CONFIDENCE,
+                    "left_out_by_default": {"type": "boolean"},
                 },
-                "required": ["term", "synonyms", "kind", "definition", "sql", "evidence", "confidence"],
+                "required": [
+                    "term", "synonyms", "kind", "definition", "sql", "evidence", "confidence", "left_out_by_default"
+                ],
             },
         },
         "unknowns": {"type": "array", "items": {"type": "string"}},
@@ -152,7 +155,10 @@ Rules:
    version of it. A term about a past moment uses structure.as_of_sql with {{as_of}} left in place.
    The same applies to a linked table's current_sql inside a subquery. Say so in the definition.
 8. Copy values exactly as shown, including case, spaces and accents.
-9. List in "unknowns" what you could not work out."""
+9. List in "unknowns" what you could not work out.
+10. Businesses normally leave some records out of their counts and lists: test, dummy, demo, sample, internal or
+   training records. When a value, code or flag in the evidence marks such a group, propose a filter term that
+   selects exactly those records and set left_out_by_default to true. Set it to false for every other term."""
 
 MERGE_SYSTEM = """You are given business terms proposed separately for each table of one database.
 Group terms that a business user would mean by the same words. For each group give a canonical name,
