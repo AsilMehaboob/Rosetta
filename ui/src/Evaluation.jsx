@@ -99,7 +99,7 @@ export default function Evaluation() {
   const [detail, setDetail] = useState(null);
   const [status, setStatus] = useState({ running: false });
   const [open, setOpen] = useState(null);
-  const [runs, setRuns] = useState(3);
+  const [runs, setRuns] = useState(2);
   const [asOf, setAsOf] = useState("");
   const [error, setError] = useState("");
 
@@ -146,7 +146,9 @@ export default function Evaluation() {
   async function run() {
     setError("");
     try {
-      setStatus(await startEvaluation(runs, null, asOf));
+      const count = Math.min(10, Math.max(1, Math.round(Number(runs)) || 2));
+      setRuns(count);
+      setStatus(await startEvaluation(count, null, asOf));
     } catch (e) {
       setError(e.message);
     }
@@ -168,13 +170,15 @@ export default function Evaluation() {
         <div className="eval-controls">
           <label className="as-of">
             Runs
-            <select value={runs} onChange={(e) => setRuns(Number(e.target.value))} disabled={status.running}>
-              {[1, 3, 5].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
+            <input
+              type="number"
+              className="runs"
+              min={1}
+              max={10}
+              value={runs}
+              onChange={(e) => setRuns(e.target.value)}
+              disabled={status.running}
+            />
           </label>
           <label className="as-of" title="What 'today' means for the questions">
             Today is

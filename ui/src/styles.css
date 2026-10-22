@@ -692,3 +692,8 @@ code {
     font-size: 20px;
   }
 }
+
+.as-of input.runs {
+  width: 56px;
+  color: var(--text);
+}

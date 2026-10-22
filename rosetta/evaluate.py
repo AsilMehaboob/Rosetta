@@ -1,6 +1,6 @@
 """Evaluation harness: ask every benchmark question several times and score the answers as data.
 
-    python -m rosetta.evaluate --runs 3
+    python -m rosetta.evaluate --runs 2
 
 Each benchmark question either has a reference query, whose rows are the expected answer, or is
 marked as one the data cannot answer. Every run asks the model afresh (cache reads off) through
@@ -209,7 +209,7 @@ def score(question: dict, result: dict, expected: dict | None) -> dict:
 
 
 def run_benchmark(
-    runs: int = 3,
+    runs: int = 2,
     only: list[str] | None = None,
     reference: date | None = None,
     progress: Callable[[dict], None] | None = None,
@@ -467,7 +467,7 @@ def read_result(run_id: str) -> dict | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the benchmark questions and score the answers as data.")
-    parser.add_argument("--runs", type=int, default=3, help="times each question is asked (default 3)")
+    parser.add_argument("--runs", type=int, default=2, help="times each question is asked (default 2)")
     parser.add_argument("--only", nargs="*", help="question ids to run, such as q1 q3 (default: all)")
     parser.add_argument("--reference-date", type=date.fromisoformat, help='"today" for the run (default: REFERENCE_DATE or today)')
     args = parser.parse_args()

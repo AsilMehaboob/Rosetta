@@ -133,7 +133,7 @@ def ask(request: ExtractRequest) -> dict:
 
 
 class EvalRequest(BaseModel):
-    runs: int = Field(default=3, ge=1, le=5, description="times each question is asked")
+    runs: int = Field(default=2, ge=1, le=10, description="times each question is asked")
     only: list[str] | None = Field(default=None, description="question ids to run; all when empty")
     reference_date: date | None = None
 
