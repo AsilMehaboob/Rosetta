@@ -20,13 +20,21 @@ from rosetta.storage import Storage
 PROFILES = "profiles"
 RUNS = "runs"
 
-# Terms that mark identifiers or personal data. Values of such columns are
-# measured but never stored, so they cannot reach a prompt or the repository.
+# Common names for identifiers and personal data across industries (contact,
+# government, financial, telecom and device identifiers). Values of such
+# columns are measured but never stored, so they cannot reach a prompt or the
+# repository. Abbreviations match by prefix, as elsewhere (CUST / CUSTOMER).
 _SENSITIVE_TOKENS = {
-    "MSISDN", "IMSI", "IMEI", "ICCI", "ICCID", "EMAIL", "PHONE", "ADDRESS",
-    "SSN", "PASSPORT", "PASSWORD", "BIRTH", "SURNAME",
+    "EMAIL", "PHONE", "MOBILENO", "FAX", "ADDRESS", "POSTCODE", "ZIPCODE",
+    "SSN", "PASSPORT", "NATIONALID", "TAXID", "LICENSE", "BIRTH", "DOB", "SURNAME",
+    "PASSWORD", "IBAN", "SWIFT", "CARDNO", "CVV",
+    "MSISDN", "IMSI", "IMEI", "ICCID",
 }
 _PERSON_PREFIXES = {"USER", "FIRST", "LAST", "FULL", "PERSON", "CONTACT"}
+
+
+def _matches(token: str, term: str) -> bool:
+    return token == term or (min(len(token), len(term)) >= 4 and (token.startswith(term) or term.startswith(token)))
 
 
 @dataclass(frozen=True)
@@ -44,10 +52,11 @@ class ProfileConfig:
 
 
 def sensitive_reason(column_name: str) -> str | None:
-    tokens = set(column_name.upper().split("_"))
-    hit = tokens & _SENSITIVE_TOKENS
+    parts = column_name.upper().split("_")
+    tokens = set(parts) | {a + b for a, b in zip(parts, parts[1:])}  # TAX_ID also reads as TAXID
+    hit = sorted({term for term in _SENSITIVE_TOKENS for t in tokens if _matches(t, term)})
     if hit:
-        return f"identifier or personal-data term {sorted(hit)[0]}"
+        return f"identifier or personal-data term {hit[0]}"
     if "NAME" in tokens and tokens & _PERSON_PREFIXES:
         return "person name"
     return None

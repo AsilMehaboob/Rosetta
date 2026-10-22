@@ -2,6 +2,7 @@
 
 import os
 from dataclasses import dataclass, field
+from datetime import date
 
 from dotenv import load_dotenv
 
@@ -29,6 +30,7 @@ class Settings:
     data_dir: str
     gemini_api_key: str = field(repr=False)
     gemini_model: str
+    reference_date: date | None  # "today" for relative dates; None means the real today
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -49,4 +51,5 @@ class Settings:
             # only the LLM stages need these, so they are checked where they are used
             gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
             gemini_model=os.getenv("GEMINI_MODEL", "").strip(),
+            reference_date=date.fromisoformat(ref) if (ref := os.getenv("REFERENCE_DATE", "").strip()) else None,
         )

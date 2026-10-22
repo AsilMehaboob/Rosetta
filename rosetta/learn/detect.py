@@ -60,7 +60,7 @@ def _tokens(name: str) -> set[str]:
 
 
 def _token_match(a: str, b: str) -> bool:
-    # equal, or one is an abbreviation of the other (SUBSCR / SUBSCRIPTION)
+    # equal, or one is an abbreviation of the other (CUST / CUSTOMER)
     return a == b or (min(len(a), len(b)) >= 4 and (a.startswith(b) or b.startswith(a)))
 
 
