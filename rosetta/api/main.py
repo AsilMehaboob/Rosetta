@@ -76,7 +76,8 @@ def retrieve_for_question(request: ExtractRequest) -> dict:
     llm = GeminiLLM(settings.gemini_api_key, settings.gemini_model, storage)
     reference = request.reference_date or settings.reference_date or date.today()
     extracted = extract(llm, request.question, reference)
-    return {"extract": extracted, "retrieve": retrieve(load_index(storage), extracted)}
+    dialect = get_adapter(settings).sqlglot_dialect
+    return {"extract": extracted, "retrieve": retrieve(load_index(storage), extracted, dialect)}
 
 
 @app.post("/sql")
@@ -88,11 +89,11 @@ def sql_for_question(request: ExtractRequest) -> dict:
     reference = request.reference_date or settings.reference_date or date.today()
     index = load_index(storage)
     extracted = extract(llm, request.question, reference)
-    pack = retrieve(index, extracted)
+    adapter = get_adapter(settings)
+    pack = retrieve(index, extracted, adapter.sqlglot_dialect)
     if pack["decision"] != "answer":
         return {"extract": extracted, "retrieve": pack, "agent": {"status": "cannot_answer", "reason": pack["reason"]}}
     profiles = {k: storage.read(PROFILES, k) for k in index.tables}
-    adapter = get_adapter(settings)
     adapter.connect_pool()
     try:
         agent = run_agent(llm, adapter, index, profiles, extracted, pack)

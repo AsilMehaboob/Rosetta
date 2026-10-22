@@ -18,6 +18,9 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
+import sqlglot
+from sqlglot import exp
+
 from rosetta.learn.assemble import LAYERS
 from rosetta.learn.profile import PROFILES
 from rosetta.storage import Storage
@@ -38,6 +41,8 @@ class RetrieveConfig:
     table_score_share: float = 0.35  # keep tables scoring at least this share of the best one
     max_terms: int = 10
     max_columns_per_table: int = 25
+    max_code_columns_per_table: int = 40  # short code lists shown with their values on top of the matched columns
+    max_bridges: int = 2
     min_score: float = 1.0  # below this nothing counts as a match
     max_join_hops: int = 3
     # subjects and values pick their own best table unless one already chosen is nearly as good
@@ -157,6 +162,12 @@ class LayerIndex:
                     if isinstance(v["value"], str):
                         self.values.setdefault(fold(v["value"]).strip(), []).append((key, c["name"], v["value"]))
 
+        # every verified link, in every role (a pair of tables can be joined on several columns)
+        self.all_links: dict[str, list[dict]] = {}
+        for link in layer["links"]:
+            for t in {link["child"]["table"], link["parent"]["table"]}:
+                self.all_links.setdefault(t, []).append(link)
+        # the best link per column, used to find routes
         self.graph: dict[str, list[dict]] = {}
         for link in layer["links"]:
             if not link["best"]:
@@ -198,9 +209,31 @@ class LayerIndex:
     def links_between(self, a: str, b: str) -> list[dict]:
         """Every verified link between two tables: one pair can be joined in several roles."""
         return sorted(
-            (l for l in self.graph.get(a, []) if {l["child"]["table"], l["parent"]["table"]} == {a, b}),
+            (l for l in self.all_links.get(a, []) if {l["child"]["table"], l["parent"]["table"]} == {a, b}),
             key=lambda l: (l["child"]["table"], l["child"]["column"], l["parent"]["column"]),
         )
+
+    def bridges(self, chosen: list[str]) -> list[str]:
+        """History tables that connect two different chosen tables through two of their own columns.
+
+        Such a table records how the relation between two things changed over
+        time (which X an entity had, and when), which questions about "at that
+        moment" need even when no word of the question names it. Linking to
+        several chosen tables through one shared key is not a bridge.
+        """
+        found = []
+        for key, t in self.tables.items():
+            if key in chosen or t["kind"] != "history":
+                continue
+            reach: dict[str, set[str]] = {}  # own column -> chosen tables it links to
+            for l in self.all_links.get(key, []):
+                own, other = (l["child"], l["parent"]) if l["child"]["table"] == key else (l["parent"], l["child"])
+                if other["table"] in chosen:
+                    reach.setdefault(own["column"], set()).add(other["table"])
+            columns = sorted(reach)
+            if any(reach[a] - reach[b] and reach[b] - reach[a] for i, a in enumerate(columns) for b in columns[i + 1:]):
+                found.append(key)
+        return sorted(found)
 
 
 @lru_cache(maxsize=2)
@@ -216,6 +249,60 @@ def load_index(storage: Storage) -> LayerIndex:
     if not current:
         raise RuntimeError("No published semantic layer; run the learn stages first")
     return _index_for(str(storage.root), current["version"])
+
+
+def _qualify(rule: str, alias: str, dialect: str) -> str:
+    """Prefix the outer-level columns of a stored rule with a table alias.
+
+    Columns inside the rule's own subqueries keep referring to their own table.
+    """
+    marker = ":rosetta_as_of"
+    tree = sqlglot.parse_one(f"SELECT 1 FROM t WHERE {rule.replace('{as_of}', marker)}", read=dialect)
+    condition = tree.args["where"].this
+    for col in list(condition.find_all(exp.Column)):
+        if col.find_ancestor(exp.Select) is tree:
+            col.set("table", exp.to_identifier(alias))
+    return condition.sql(dialect=dialect).replace(marker, "{as_of}")
+
+
+def join_patterns(index: LayerIndex, link: dict, dialect: str) -> list[dict]:
+    """Ready-made, correct ways to join along one link, for each side that is not a plain lookup.
+
+    Built from what Detect proved about the table joined into: a history table
+    is joined to its current version, to the version valid on a date, or to
+    the version valid at the moment of each row of the other table; a snapshot
+    table to its latest or a given snapshot; a table of dated versions to its
+    latest version. A table with one row per key needs no rule.
+    """
+    out = []
+    for into, frm in (("parent", "child"), ("child", "parent")):
+        key, col, other_col = link[into]["table"], link[into]["column"], link[frm]["column"]
+        t = index.tables[key]
+        on = f"JOIN {key} j ON j.{col} = s.{other_col}"
+        grain = (t["grain"] or {}).get("columns", [])
+        if t["kind"] == "history" and t["current_sql"] and t["as_of_sql"]:
+            as_of = _qualify(t["as_of_sql"], "j", dialect)
+            patterns = {
+                "now": f"{on} AND {_qualify(t['current_sql'], 'j', dialect)}",
+                "as_of_date": f"{on} AND {as_of}",
+                "at_time_of_each_row": f"{on} AND {as_of.replace('{as_of}', 's.{event_date}')}",
+            }
+        elif t["kind"] == "snapshot" and t["current_sql"] and len(grain) >= 2:
+            patterns = {
+                "latest": f"{on} AND {_qualify(t['current_sql'], 'j', dialect)}",
+                "on_date": f"{on} AND j.{grain[-1]} = {{as_of}}",
+            }
+        elif t["kind"] == "entity_by_date" and len(grain) >= 2:
+            entity, dated = grain[0], grain[-1]
+            patterns = {
+                "latest_version": f"{on} AND j.{dated} = (SELECT MAX(v.{dated}) FROM {key} v WHERE v.{entity} = j.{entity})",
+            }
+        elif into == "parent":
+            patterns = {"lookup": on}
+        else:
+            continue  # joining from a parent into rows of a child: the child's rows are the point
+        out.append({"into": key, "kind": t["kind"], "patterns": patterns})
+    return out
 
 
 def _column_brief(column: dict) -> dict:
@@ -265,7 +352,9 @@ def _place(
     return []
 
 
-def retrieve(index: LayerIndex, extracted: dict[str, Any], cfg: RetrieveConfig | None = None) -> dict[str, Any]:
+def retrieve(
+    index: LayerIndex, extracted: dict[str, Any], dialect: str, cfg: RetrieveConfig | None = None
+) -> dict[str, Any]:
     cfg = cfg or RetrieveConfig()
     term_scores: Counter = Counter()
     column_scores: Counter = Counter()
@@ -335,6 +424,9 @@ def retrieve(index: LayerIndex, extracted: dict[str, Any], cfg: RetrieveConfig |
             unreachable.append(table)
             continue
         tables += [t for t in path if t not in tables]
+    # history tables that record how two chosen tables related over time
+    bridges = index.bridges(tables)[: cfg.max_bridges]
+    tables += bridges
     joins = []
     for i, a in enumerate(tables):
         for b in tables[i + 1:]:
@@ -365,6 +457,16 @@ def retrieve(index: LayerIndex, extracted: dict[str, Any], cfg: RetrieveConfig |
             (c for c in t["columns"] if c["name"] in wanted),
             key=lambda c: (-column_scores.get((key, c["name"]), 0.0), c["name"]),
         )[: cfg.max_columns_per_table]
+        # every short code list of the table, with its values: a question's word is often a value
+        # ("premium", "overdue") whose column name gives no hint. Personal data never has values stored.
+        shown = {c["name"] for c in ranked_columns}
+        code_columns = sorted(
+            (c for c in t["columns"]
+             if c["name"] not in shown and c.get("shape") in ("code", "flag") and c.get("values") and not c.get("sensitive")),
+            key=lambda c: c["name"],
+        )[: cfg.max_code_columns_per_table]
+        ranked_columns += code_columns
+        wanted |= {c["name"] for c in code_columns}
         packed_tables.append(
             {
                 "table": key,
@@ -406,11 +508,14 @@ def retrieve(index: LayerIndex, extracted: dict[str, Any], cfg: RetrieveConfig |
                 "to": f"{l['parent']['table']}.{l['parent']['column']}",
                 "cardinality": l["cardinality"],
                 "notes": l["notes"],
+                # s = the table joined from, j = the table joined into
+                "patterns": join_patterns(index, l, dialect),
             }
             for l in joins
         ],
         "unmatched": unmatched,
         "unreachable_tables": unreachable,
+        "bridge_tables": bridges,
         "explained_by": explained,
         # one step away along verified links, in case the search missed a table the question needs
         "related_tables": sorted(
