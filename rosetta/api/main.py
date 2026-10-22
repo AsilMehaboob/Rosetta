@@ -1,10 +1,12 @@
 """HTTP front door. Thin: it calls the Learn and Answer modules and holds no logic."""
 
+import os
 import time
 from datetime import date
 from typing import Literal
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from rosetta.adapters import get_adapter
@@ -22,6 +24,14 @@ from rosetta.llm import GeminiLLM
 from rosetta.storage import Storage
 
 app = FastAPI(title="Rosetta", version="0.1.0")
+
+# the browser UI runs on its own address; only the addresses listed here may call the API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 class LearnRequest(BaseModel):
