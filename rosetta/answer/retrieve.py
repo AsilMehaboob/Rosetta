@@ -287,6 +287,8 @@ def join_patterns(index: LayerIndex, link: dict, dialect: str) -> list[dict]:
                 "as_of_date": f"{on} AND {as_of}",
                 "at_time_of_each_row": f"{on} AND {as_of.replace('{as_of}', 's.{event_date}')}",
             }
+            if len(grain) >= 2:  # versions that began in a period: assigned, joined, opened in June
+                patterns["started_in_period"] = f"{on} AND j.{grain[1]} >= {{period_start}} AND j.{grain[1]} < {{period_end}}"
         elif t["kind"] == "snapshot" and t["current_sql"] and len(grain) >= 2:
             patterns = {
                 "latest": f"{on} AND {_qualify(t['current_sql'], 'j', dialect)}",
@@ -477,6 +479,12 @@ def retrieve(
                 "rule": t["rule"],
                 "current_sql": t["current_sql"],
                 "as_of_sql": t["as_of_sql"],
+                # versions that began in a period (assigned, joined, opened in June), as opposed to valid during it
+                "started_in_sql": (
+                    f"{t['grain']['columns'][1]} >= {{period_start}} AND {t['grain']['columns'][1]} < {{period_end}}"
+                    if t["kind"] == "history" and len((t["grain"] or {}).get("columns", [])) >= 2
+                    else None
+                ),
                 "columns": [_column_brief(c) for c in ranked_columns],
                 "other_columns": sorted(c["name"] for c in t["columns"] if c["name"] not in wanted),
             }
