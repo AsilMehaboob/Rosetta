@@ -505,12 +505,6 @@ code {
   line-height: 1.5;
 }
 
-.eval-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
 
 .eval select,
 .as-of select {
@@ -559,10 +553,6 @@ code {
   transition: width 0.4s ease;
 }
 
-.eval-empty {
-  height: auto;
-  padding: 60px 0;
-}
 
 .eval-meta {
   display: flex;
@@ -573,33 +563,9 @@ code {
   font-size: 12px;
 }
 
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
-  margin-top: 16px;
-}
 
-.metric {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
 
-.metric-value {
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
 
-.metric-label {
-  font-size: 12px;
-  color: var(--muted);
-}
 
 .eval-table {
   margin-top: 16px;
@@ -693,10 +659,6 @@ code {
   }
 }
 
-.as-of input.runs {
-  width: 56px;
-  color: var(--text);
-}
 
 /* a run next to the reference query */
 
@@ -1045,4 +1007,84 @@ th.col-missing {
 .vdot.now {
   background: var(--muted);
   animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* evaluation toolbar and empty state */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  border-right: 1px solid var(--border);
+}
+
+.field input {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.field input.runs {
+  width: 44px;
+}
+
+.toolbar .primary {
+  margin-left: 4px;
+}
+
+.eval-empty {
+  margin-top: 40px;
+  padding: 28px;
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  max-width: 620px;
+}
+
+.eval-empty h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.eval-empty p {
+  margin: 6px 0 0;
+  font-size: 14px;
+}
+
+.eval-empty ol {
+  margin: 18px 0 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.eval-empty li + li {
+  margin-top: 6px;
+}
+
+.eval-table > table > tbody > tr > td {
+  vertical-align: top;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.q-detail {
+  padding: 4px 4px 12px;
 }

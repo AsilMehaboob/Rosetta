@@ -398,8 +398,8 @@ export default function Evaluation() {
             query text.
           </p>
         </div>
-        <div className="eval-controls">
-          <label className="as-of">
+        <div className="toolbar">
+          <label className="field">
             Runs
             <input
               type="number"
@@ -411,7 +411,7 @@ export default function Evaluation() {
               disabled={status.running}
             />
           </label>
-          <label className="as-of" title="What 'today' means for the questions">
+          <label className="field" title="What 'today' means for the questions; blank means the real today">
             Today is
             <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} disabled={status.running} />
           </label>
@@ -439,8 +439,22 @@ export default function Evaluation() {
       {error && <p className="error">{error}</p>}
 
       {summaries.length === 0 && !status.running && (
-        <div className="empty eval-empty">
-          <p>No evaluation yet. Run one to see how many answers are correct, consistent and fast.</p>
+        <div className="eval-empty">
+          <h2>No evaluation yet</h2>
+          <p className="muted">Run one to see how Rosetta does on the benchmark questions.</p>
+          <ol>
+            <li>
+              <strong>Expected answers</strong> come from running each question's reference query on the database.
+            </li>
+            <li>
+              <strong>Every question is asked several times</strong>, each time afresh, through the same pipeline as the
+              chat.
+            </li>
+            <li>
+              <strong>Answers are compared as data</strong>: column names, column order and row order don't matter.
+              Questions the data can't answer must be refused.
+            </li>
+          </ol>
         </div>
       )}
 
