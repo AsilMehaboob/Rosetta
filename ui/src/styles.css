@@ -124,6 +124,56 @@ button:disabled {
   color: var(--bad);
 }
 
+.recent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.chip {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 400;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.chip.active,
+.chip:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 28px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
 .muted {
   color: var(--muted);
 }
