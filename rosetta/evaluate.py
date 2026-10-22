@@ -230,14 +230,24 @@ def run_benchmark(
     sensitive = _sensitive_columns(index)
     started = datetime.now()
     total = runs * len(questions)
-    state = {"run_id": run_id, "done": 0, "total": total, "question": None, "run": None, "last": None}
+    state = {
+        "run_id": run_id,
+        "done": 0,
+        "total": total,
+        "question": None,
+        "run": None,
+        "last": None,
+        "questions": [q["id"] for q in questions],
+        "runs_per_question": runs,
+        "completed": [],  # {question, run, verdict} of every run finished so far
+    }
     records: list[dict] = []
     stopped = None
 
     def report(**changes: Any) -> None:
         state.update(changes)
         if progress:
-            progress(dict(state))
+            progress({**state, "completed": list(state["completed"])})
 
     try:
         expected: dict[str, dict] = {}
@@ -294,6 +304,7 @@ def run_benchmark(
                     records.append(record)
                     log.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
                     log.flush()
+                    state["completed"].append({"question": q["id"], "run": run, "verdict": verdict["verdict"]})
                     report(done=state["done"] + 1, question=None, last=f"{q['id']} run {run}: {verdict['verdict']}")
     except QuotaExhausted as exc:
         stopped = str(exc)

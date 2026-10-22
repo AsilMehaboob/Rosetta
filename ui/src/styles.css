@@ -1007,3 +1007,42 @@ th.col-missing {
     opacity: 1;
   }
 }
+
+/* live progress: questions × runs */
+
+.live-grid {
+  display: inline-grid;
+  align-items: center;
+  justify-items: center;
+  gap: 6px 4px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+.live-id {
+  justify-self: start;
+  padding-right: 10px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  color: var(--muted);
+}
+
+.live-run {
+  color: var(--muted);
+}
+
+.live-grid .vdot {
+  margin: 0;
+}
+
+.vdot.todo {
+  background: var(--soft);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.vdot.now {
+  background: var(--muted);
+  animation: pulse 1.2s ease-in-out infinite;
+}

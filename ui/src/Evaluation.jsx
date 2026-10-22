@@ -116,6 +116,35 @@ function Scorecard({ summary }) {
   );
 }
 
+// Questions down, runs across: each cell fills in with its verdict as the run finishes.
+function LiveGrid({ status }) {
+  const ids = status.questions || [];
+  const runs = status.runs_per_question || 0;
+  if (!ids.length || !runs) return null;
+  const done = new Map((status.completed || []).map((c) => [`${c.question}/${c.run}`, c.verdict]));
+  return (
+    <div className="live-grid" style={{ gridTemplateColumns: `auto repeat(${runs}, 18px)` }}>
+      <span />
+      {Array.from({ length: runs }, (_, r) => (
+        <span key={r} className="live-run">
+          {r + 1}
+        </span>
+      ))}
+      {ids.map((id) => (
+        <Fragment key={id}>
+          <span className="live-id">{id}</span>
+          {Array.from({ length: runs }, (_, r) => {
+            const v = done.get(`${id}/${r + 1}`);
+            const now = status.question === id && status.run === r + 1;
+            const cls = v ? verdict(v).tone : now ? "now" : "todo";
+            return <span key={r} className={`vdot ${cls}`} title={v ? `Run ${r + 1}: ${verdict(v).text}` : now ? "Asking now" : "Waiting"} />;
+          })}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
 function Dot({ v, run }) {
   const { text, tone } = verdict(v);
   return <span className={`vdot ${tone}`} title={`Run ${run}: ${text}`} />;
@@ -403,6 +432,7 @@ export default function Evaluation() {
           <div className="bar">
             <div style={{ width: `${status.total ? (status.done / status.total) * 100 : 2}%` }} />
           </div>
+          <LiveGrid status={status} />
         </div>
       )}
 
