@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { askQuestion } from "./api.js";
 import AnswerCard from "./AnswerCard.jsx";
 import AskForm from "./AskForm.jsx";
+import Evaluation from "./Evaluation.jsx";
 import Evidence from "./Evidence.jsx";
 import ResultTable from "./ResultTable.jsx";
 
@@ -47,6 +48,7 @@ function Reply({ turn }) {
 
 export default function App() {
   const [turns, setTurns] = useState(loadTurns);
+  const [view, setView] = useState("chat");
   const end = useRef(null);
   const busy = turns.some((t) => t.status === "pending");
 
@@ -70,35 +72,51 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="logo">Rosetta</span>
-        {turns.length > 0 && (
+        <div className="brand">
+          <span className="logo">Rosetta</span>
+          <nav className="tabs">
+            <button type="button" className={view === "chat" ? "on" : ""} onClick={() => setView("chat")}>
+              Chat
+            </button>
+            <button type="button" className={view === "eval" ? "on" : ""} onClick={() => setView("eval")}>
+              Evaluation
+            </button>
+          </nav>
+        </div>
+        {view === "chat" && turns.length > 0 && (
           <button type="button" className="ghost" onClick={() => setTurns([])} disabled={busy}>
             New chat
           </button>
         )}
       </header>
 
-      <main className="thread">
-        {turns.length === 0 ? (
-          <div className="empty">
-            <h1>What would you like to know?</h1>
-            <p>Ask in plain words. Rosetta finds the data, shows the answer and how it worked it out.</p>
-          </div>
-        ) : (
-          turns.map((turn) => (
-            <section key={turn.id} className="turn">
-              <div className="bubble">{turn.question}</div>
-              <Reply turn={turn} />
-            </section>
-          ))
-        )}
-        <div ref={end} />
-      </main>
+      {view === "eval" ? (
+        <Evaluation />
+      ) : (
+        <>
+          <main className="thread">
+            {turns.length === 0 ? (
+              <div className="empty">
+                <h1>What would you like to know?</h1>
+                <p>Ask in plain words. Rosetta finds the data, shows the answer and how it worked it out.</p>
+              </div>
+            ) : (
+              turns.map((turn) => (
+                <section key={turn.id} className="turn">
+                  <div className="bubble">{turn.question}</div>
+                  <Reply turn={turn} />
+                </section>
+              ))
+            )}
+            <div ref={end} />
+          </main>
 
-      <footer className="dock">
-        <AskForm onAsk={ask} busy={busy} />
-        <p className="fine">Answers come from your database; check the details under each answer.</p>
-      </footer>
+          <footer className="dock">
+            <AskForm onAsk={ask} busy={busy} />
+            <p className="fine">Answers come from your database; check the details under each answer.</p>
+          </footer>
+        </>
+      )}
     </div>
   );
 }
